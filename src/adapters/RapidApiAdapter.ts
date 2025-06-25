@@ -39,7 +39,7 @@ export class RapidApiAdapter implements IStockXAdapter {
     try {
       logger.info(`Fetching ${brandName} products from RapidAPI`);
 
-      const response = await this.client.get('/search', {
+      const response: { data: { data: { products: RapidApiProduct[]; }; }; } = await this.client.get('/search', {
         params: {
           query: brandName.toLowerCase(),
           category: 'shoes',
@@ -79,8 +79,8 @@ export class RapidApiAdapter implements IStockXAdapter {
     return apiProducts
       .filter((item) => item.brand?.toLowerCase() === brandName.toLowerCase())
       .map((item) => {
-        const currentPrice = item.market?.lowest_ask || item.market?.last_sale || 0;
-        const retailPrice = item.retail_price || 0;
+        const currentPrice = item.market?.lowest_ask ?? item.market?.last_sale ?? 0;
+        const retailPrice = item.retail_price ?? 0;
 
         if (retailPrice === 0 || currentPrice === 0) {
           return null;

@@ -54,7 +54,7 @@ export class SupremeController {
     try {
       const health = await this.supremeService.getHealthStatus();
       
-      const response: ApiResponse<any> = {
+      const response: ApiResponse<unknown> = {
         success: true,
         data: health,
         timestamp: new Date().toISOString(),
@@ -74,7 +74,7 @@ export class SupremeController {
     try {
       this.supremeService.resetCircuitBreakers();
       
-      const response: ApiResponse<any> = {
+      const response: ApiResponse<unknown> = {
         success: true,
         data: { message: 'All circuit breakers have been reset' },
         timestamp: new Date().toISOString(),

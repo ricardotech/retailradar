@@ -19,7 +19,7 @@ export class PuppeteerAdapter implements IStockXAdapter {
 
   constructor() {
     this.captchaService = new CaptchaService({
-      apiKey: process.env['CAPTCHA_API_KEY'] || 'demo-key',
+      apiKey: process.env['CAPTCHA_API_KEY'] ?? 'demo-key',
       timeout: 60000
     });
   }
@@ -65,14 +65,14 @@ export class PuppeteerAdapter implements IStockXAdapter {
         timeout: 30000 
       });
       
-      const isAccessible = await page.evaluate(() => {
+      const isAccessible = await page.evaluate((): boolean => {
         return (window as any).document.title.toLowerCase().includes('stockx');
       });
       
       await page.close();
       return isAccessible;
       
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error('Puppeteer health check failed:', error);
       return false;
     }
@@ -81,7 +81,7 @@ export class PuppeteerAdapter implements IStockXAdapter {
   private async initializeBrowser(): Promise<void> {
     if (!this.browser) {
       logger.info('Initializing Puppeteer browser');
-      const puppeteerOptions: any = {
+      const puppeteerOptions: import("puppeteer").PuppeteerLaunchOptions = {
         headless: 'new',
         args: [
           '--no-sandbox',
@@ -181,7 +181,7 @@ export class PuppeteerAdapter implements IStockXAdapter {
         // }
       }
       
-    } catch (error) {
+    } catch (error: unknown) {
       logger.warn('Error handling captcha:', error);
       // Continue without failing the entire scraping process
     }
@@ -196,7 +196,7 @@ export class PuppeteerAdapter implements IStockXAdapter {
       
       // Wait for actual product tiles to load
       await page.waitForFunction(
-        () => {
+        (): boolean => {
           return (window as any).document.querySelectorAll('[data-testid="ProductTile"]').length > 0;
         },
         { timeout: 20000 }
@@ -205,7 +205,7 @@ export class PuppeteerAdapter implements IStockXAdapter {
       // Additional wait for dynamic content
       await new Promise(resolve => setTimeout(resolve, 3000));
       
-    } catch (error) {
+    } catch (error: unknown) {
       logger.warn('Standard selectors not found, trying alternative selectors');
       
       await page.waitForSelector('#product-results, .browse-grid, .search-results', { 
@@ -214,100 +214,246 @@ export class PuppeteerAdapter implements IStockXAdapter {
     }
   }
 
-  private async scrapeProducts(page: Page, brandName: string): Promise<Product[]> {
-    const products = await page.evaluate((brandName) => {
-      // Use the actual StockX HTML structure
-      const productElements = (window as any).document.querySelectorAll('[data-testid="ProductTile"]');
-      const results: any[] = [];
+  private calculateDiscountPercentage(retailPrice: number, currentPrice: number): number {
+    if (retailPrice <= 0) return 0;
+    return Number(((retailPrice - currentPrice) / retailPrice).toFixed(4));
+  }
 
+  
+
+  private async scrapeProducts(page: Page, brandName: string): Promise<Product[]> {
+    logger.info('Scraping initial product list...');
+    const initialProducts = await page.evaluate((brandName: string) => {
+      const productElements = (document as any).querySelectorAll('[data-testid="ProductTile"]');
+      const results: Array<{
+        id: string;
+        name: string;
+        brand: string;
+        colorway: string;
+        currentPrice: number;
+        stockxUrl: string;
+        imageUrl: string;
+      }> = [];
       productElements.forEach((element: any, index: number) => {
         try {
-          // Extract product name
           const nameElement = element.querySelector('[data-testid="product-tile-title"]');
-          if (!nameElement) return;
+          const name = nameElement?.textContent?.trim() ?? '';
+          if (!name.toLowerCase().includes(brandName.toLowerCase())) return;
 
-          const name = nameElement.textContent?.trim();
-          if (!name || !name.toLowerCase().includes(brandName.toLowerCase())) return;
-
-          // Extract current price (Lowest Ask)
           const priceElement = element.querySelector('[data-testid="product-tile-lowest-ask-amount"]');
-          if (!priceElement) return;
-
-          const priceText = priceElement.textContent?.trim();
+          const priceText = priceElement?.textContent?.trim() ?? '';
           const currentPrice = priceText ? parseInt(priceText.replace(/[^\d]/g, '')) : 0;
           if (currentPrice <= 0) return;
 
-          // Extract product link
           const linkElement = element.querySelector('a[data-testid="productTile-ProductSwitcherLink"]');
-          if (!linkElement) return;
-
-          const href = linkElement.getAttribute('href');
+          const href = linkElement?.getAttribute('href');
           const stockxUrl = href?.startsWith('http') ? href : `https://stockx.com${href}`;
 
-          // Extract image
           const imageElement = element.querySelector('img');
-          const imageUrl = imageElement?.getAttribute('src') || '';
-
-          // For below-retail page, we need to estimate retail price
-          // Since StockX doesn't show retail price directly, we'll estimate it
-          // Based on typical brand pricing patterns and current ask
-          let estimatedRetailPrice = 0;
+          const imageUrl = imageElement?.getAttribute('src') ?? '';
           
-          // Adjust pricing estimation based on brand
-          if (brandName.toLowerCase() === 'supreme') {
-            // Common Supreme retail price patterns based on product type
-            if (name.toLowerCase().includes('hooded sweatshirt') || name.toLowerCase().includes('hoodie')) {
-              estimatedRetailPrice = Math.max(currentPrice * 1.2, 148); // Hoodies typically retail $148-168
-            } else if (name.toLowerCase().includes('jacket') || name.toLowerCase().includes('coat')) {
-              estimatedRetailPrice = Math.max(currentPrice * 1.3, 298); // Jackets typically retail $298-498
-            } else if (name.toLowerCase().includes('t-shirt') || name.toLowerCase().includes('tee')) {
-              estimatedRetailPrice = Math.max(currentPrice * 1.25, 48); // Tees typically retail $48-58
-            } else if (name.toLowerCase().includes('crewneck') || name.toLowerCase().includes('sweater')) {
-              estimatedRetailPrice = Math.max(currentPrice * 1.2, 138); // Crewnecks typically retail $138-158
-            } else if (name.toLowerCase().includes('pants') || name.toLowerCase().includes('shorts')) {
-              estimatedRetailPrice = Math.max(currentPrice * 1.25, 118); // Bottoms typically retail $118-188
-            } else {
-              estimatedRetailPrice = Math.max(currentPrice * 1.3, 50);
-            }
-          } else {
-            // Generic estimation for other brands
-            estimatedRetailPrice = Math.max(currentPrice * 1.4, 100);
-          }
-
-          // Only include if it appears to be below estimated retail
-          if (currentPrice >= estimatedRetailPrice) return;
-
-          const discountPercentage = ((estimatedRetailPrice - currentPrice) / estimatedRetailPrice) * 100;
-
-          // Extract colorway from name (usually the last word/phrase)
           const nameWords = name.split(' ');
-          const colorway = nameWords[nameWords.length - 1] || '';
+          const colorway = nameWords[nameWords.length - 1] ?? '';
 
           results.push({
             id: `puppeteer-${index}-${Date.now()}`,
-            name: name,
+            name,
             brand: brandName,
-            colorway: colorway,
-            retailPrice: estimatedRetailPrice,
-            currentPrice: currentPrice,
-            discountPercentage: discountPercentage,
-            stockxUrl: stockxUrl,
-            imageUrl: imageUrl,
-            lastUpdated: new Date(),
+            colorway,
+            currentPrice,
+            stockxUrl,
+            imageUrl,
           });
         } catch (error) {
           console.warn('Error parsing product element:', error);
         }
       });
-
       return results;
     }, brandName);
 
-    return products.map(p => ({
-      ...p,
-      lastUpdated: new Date()
-    }));
+    logger.info(`Found ${initialProducts.length} potential products. Now fetching individual retail prices...`);
+
+    const detailedProducts: Product[] = [];
+    const failedScrapes: string[] = [];
+    
+    for (let i = 0; i < initialProducts.length; i++) {
+      const product = initialProducts[i];
+      logger.info(`[${i + 1}/${initialProducts.length}] Scraping retail price for: ${product.name}`);
+      logger.info(`Product URL: ${product.stockxUrl}`);
+      logger.info(`Current price: $${product.currentPrice}`);
+      
+      const retailPrice = await this.scrapeRetailPrice(page, product.stockxUrl);
+
+      if (retailPrice > 0) {
+        if (product.currentPrice < retailPrice) {
+          const discountPercentage = this.calculateDiscountPercentage(retailPrice, product.currentPrice);
+          const discount = ((retailPrice - product.currentPrice) / retailPrice * 100).toFixed(1);
+          
+          logger.info(`✅ BELOW RETAIL: ${product.name} - Retail: $${retailPrice}, Current: $${product.currentPrice}, Discount: ${discount}%`);
+          
+          detailedProducts.push({
+            ...product,
+            retailPrice,
+            discountPercentage,
+            lastUpdated: new Date(),
+          });
+        } else {
+          logger.info(`❌ NOT below retail: ${product.name} - Retail: $${retailPrice}, Current: $${product.currentPrice}`);
+        }
+      } else {
+        logger.warn(`⚠️  Failed to get retail price for: ${product.name}`);
+        failedScrapes.push(product.name);
+      }
+      
+      // Small delay between requests to be respectful
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    if (failedScrapes.length > 0) {
+      logger.warn(`Failed to scrape retail prices for ${failedScrapes.length} products: ${failedScrapes.join(', ')}`);
+    }
+    
+    logger.info(`Finished scraping. Found ${detailedProducts.length} products confirmed to be below retail.`);
+    return detailedProducts;
   }
+
+  private async scrapeRetailPrice(_page: Page, productUrl: string): Promise<number> {
+    const productPage = await this.browser!.newPage();
+    try {
+      logger.info(`Fetching retail price from: ${productUrl}`);
+      await productPage.goto(productUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+      await this.handleCaptchaIfPresent(productPage);
+
+      // Wait for page to load completely
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Try multiple selectors to find retail price
+      const retailPrice = await productPage.evaluate(() => {
+        console.log('Starting retail price search...');
+        
+        // Method 1: Find elements with "Retail Price" text and get the next sibling
+        const retailPriceElements = Array.from((document as any).querySelectorAll('p, span, div, dt, dd'))
+          .filter((el: any) => {
+            const text = el.textContent?.trim().toLowerCase() || '';
+            return text === 'retail price' || text === 'retail' || text.includes('retail price');
+          });
+
+        console.log(`Found ${retailPriceElements.length} elements with retail price text`);
+
+        for (const element of retailPriceElements) {
+          // Try next sibling
+          const nextSibling = (element as any).nextElementSibling;
+          if (nextSibling && nextSibling.textContent) {
+            const priceMatch = nextSibling.textContent.match(/\$?(\d+(?:,\d{3})*(?:\.\d{2})?)/);
+            if (priceMatch) {
+              const price = parseFloat(priceMatch[1].replace(/,/g, ''));
+              if (price > 0 && price < 10000) {
+                console.log(`Found retail price via next sibling: $${price}`);
+                return price;
+              }
+            }
+          }
+          
+          // Try parent's next sibling
+          const parentNextSibling = (element as any).parentElement?.nextElementSibling;
+          if (parentNextSibling && parentNextSibling.textContent) {
+            const priceMatch = parentNextSibling.textContent.match(/\$?(\d+(?:,\d{3})*(?:\.\d{2})?)/);
+            if (priceMatch) {
+              const price = parseFloat(priceMatch[1].replace(/,/g, ''));
+              if (price > 0 && price < 10000) {
+                console.log(`Found retail price via parent next sibling: $${price}`);
+                return price;
+              }
+            }
+          }
+        }
+
+        // Method 2: Look for price elements in retail context
+        const allElements = Array.from((document as any).querySelectorAll('p, span, div, dt, dd'));
+        for (const element of allElements) {
+          const text = (element as any).textContent?.trim() || '';
+          const parentText = (element as any).parentElement?.textContent?.toLowerCase() || '';
+          
+          // Check if element contains price and parent context mentions retail
+          const priceMatch = text.match(/^\$(\d+(?:,\d{3})*(?:\.\d{2})?)/);
+          if (priceMatch && (parentText.includes('retail') || parentText.includes('msrp'))) {
+            const price = parseFloat(priceMatch[1].replace(/,/g, ''));
+            if (price > 0 && price < 10000) {
+              console.log(`Found retail price via context: $${price} from "${text}"`);
+              return price;
+            }
+          }
+        }
+
+        // Method 3: StockX specific data attributes and classes
+        const stockxSelectors = [
+          '[data-testid*="retail"]',
+          '[data-testid*="msrp"]',
+          '.retail-price',
+          '.msrp-price',
+          '[class*="retail"]',
+          '[class*="msrp"]'
+        ];
+
+        for (const selector of stockxSelectors) {
+          const elements = (document as any).querySelectorAll(selector);
+          for (const element of elements) {
+            const text = (element as any).textContent?.trim() || '';
+            const priceMatch = text.match(/\$?(\d+(?:,\d{3})*(?:\.\d{2})?)/);
+            if (priceMatch) {
+              const price = parseFloat(priceMatch[1].replace(/,/g, ''));
+              if (price > 0 && price < 10000) {
+                console.log(`Found retail price via StockX selector: $${price}`);
+                return price;
+              }
+            }
+          }
+        }
+
+        // Method 4: Fallback - text search in entire document
+        console.log('Trying fallback text search...');
+        const bodyText = (document as any).body.innerText;
+        const patterns = [
+          /Retail Price[:\s]*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)/i,
+          /Retail[:\s]*\$(\d+(?:,\d{3})*(?:\.\d{2})?)/i,
+          /MSRP[:\s]*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)/i,
+          /Original Price[:\s]*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)/i
+        ];
+
+        for (const pattern of patterns) {
+          const match = bodyText.match(pattern);
+          if (match) {
+            const price = parseFloat(match[1].replace(/,/g, ''));
+            if (price > 0 && price < 10000) {
+              console.log(`Found retail price via text search: $${price}`);
+              return price;
+            }
+          }
+        }
+
+        console.log('No retail price found');
+        return 0;
+      });
+
+      if (retailPrice > 0) {
+        logger.info(`Successfully scraped retail price: $${retailPrice} from ${productUrl}`);
+        return retailPrice;
+      } else {
+        logger.warn(`Could not find retail price for ${productUrl}`);
+        
+        // Debug: log page content for analysis
+        const pageText = await productPage.evaluate(() => (document as any).body.innerText.substring(0, 1000));
+        logger.info(`Page content sample: ${pageText}`);
+      }
+
+    } catch (error) {
+      logger.error(`Error scraping retail price for ${productUrl}:`, error);
+    } finally {
+      await productPage.close();
+    }
+    return 0;
+  }
+
 
   async close(): Promise<void> {
     if (this.browser) {

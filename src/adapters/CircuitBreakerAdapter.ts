@@ -54,7 +54,7 @@ export class CircuitBreakerAdapter implements IStockXAdapter {
     }
   }
 
-  getCircuitBreakerStats() {
+  getCircuitBreakerStats(): { name: string; state: import("/root/Projects/retail/retailradar/src/utils/CircuitBreaker").CircuitBreakerState; failureCount: number; lastFailureTime: string | undefined; nextAttempt: string | undefined; } {
     return this.circuitBreaker.getStats();
   }
 

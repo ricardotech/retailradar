@@ -53,8 +53,7 @@ export class RateLimitError extends AppError {
 export const errorHandler = (
   error: Error,
   req: Request,
-  res: Response,
-  next: NextFunction
+  res: Response
 ): void => {
   let statusCode = 500;
   let message = 'Internal server error';
@@ -95,7 +94,7 @@ export const errorHandler = (
     statusCode,
   });
 
-  const response: any = {
+  const response: { success: boolean; error: { code: string; message: string; }; timestamp: string; stack?: string; } = {
     success: false,
     error: {
       code: errorCode,
@@ -120,8 +119,8 @@ export const notFoundHandler = (
   next(error);
 };
 
-export const asyncHandler = (fn: Function) => {
-  return (req: Request, res: Response, next: NextFunction) => {
+export const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => Promise<void>) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
     Promise.resolve(fn(req, res, next)).catch(next);
   };
 };

@@ -46,7 +46,7 @@ export class CircuitBreaker {
 
   private onSuccess(): void {
     this.failureCount = 0;
-    this.lastFailureTime = undefined as undefined;
+    this.lastFailureTime = undefined;
     
     if (this.state === CircuitBreakerState.HALF_OPEN) {
       this.state = CircuitBreakerState.CLOSED;
@@ -87,7 +87,7 @@ export class CircuitBreaker {
     return this.state;
   }
 
-  getStats() {
+  getStats(): { name: string; state: CircuitBreakerState; failureCount: number; lastFailureTime: string | undefined; nextAttempt: string | undefined; } {
     return {
       name: this.name,
       state: this.state,
@@ -100,8 +100,8 @@ export class CircuitBreaker {
   reset(): void {
     this.state = CircuitBreakerState.CLOSED;
     this.failureCount = 0;
-    this.lastFailureTime = undefined as undefined;
-    this.nextAttempt = undefined as undefined;
+    this.lastFailureTime = undefined;
+    this.nextAttempt = undefined;
     
     logger.info(`Circuit breaker ${this.name} has been reset`);
   }

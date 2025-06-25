@@ -40,7 +40,7 @@ export class SupremeService {
       data: products.map(this.entityToDto),
       pagination: {
         ...(lastProduct && { cursor: this.productRepository.generateCursor(lastProduct) }),
-        hasNext: products.length === (query.limit || 20),
+        hasNext: products.length === (query.limit ?? 20),
         total,
       },
     };
@@ -60,7 +60,7 @@ export class SupremeService {
 
   private async refreshProductData(): Promise<void> {
     const freshProducts = await this.fetchProductsFromAdapters();
-    const entities = freshProducts.map(this.dtoToEntity);
+    const entities = freshProducts.map((p: Product) => this.dtoToEntity(p));
     
     for (const entity of entities) {
       const existing = await this.productRepository.findByStockxUrl(entity.stockxUrl);
@@ -153,7 +153,7 @@ export class SupremeService {
     if (query.cursor) {
       params.append('cursor', query.cursor);
     }
-    params.append('limit', (query.limit || 20).toString());
+    params.append('limit', (query.limit ?? 20).toString());
 
     return `supreme-below-retail:${params.toString()}`;
   }

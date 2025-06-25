@@ -1,9 +1,9 @@
 import { logger } from './logger';
 
-beforeAll(async () => {
+beforeAll(() => {
   logger.info('Starting test suite');
 });
 
-afterAll(async () => {
+afterAll(() => {
   logger.info('Test suite completed');
 });

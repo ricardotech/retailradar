@@ -100,7 +100,7 @@ export class ProductRepository {
     queryBuilder: SelectQueryBuilder<Product>,
     query: BrandProductsQuery
   ): void {
-    const limit = query.limit || 20;
+    const limit = query.limit ?? 20;
     queryBuilder.limit(limit);
 
     if (query.cursor) {
@@ -117,7 +117,7 @@ export class ProductRepository {
             }
           );
         }
-      } catch (error) {
+      } catch (e: unknown) {
         // Invalid cursor, ignore
       }
     }

@@ -15,7 +15,7 @@ const rapidApiAdapter = new RapidApiAdapter(
 );
 
 const officialAdapter = new OfficialStockXAdapter(
-  process.env['STOCKX_API_KEY'] || 'demo-key'
+  process.env['STOCKX_API_KEY'] ?? 'demo-key'
 );
 
 const puppeteerAdapter = new PuppeteerAdapter();
@@ -61,12 +61,16 @@ router.get(
 
 router.get(
   '/:brandName/health',
-  brandController.getHealthStatus.bind(brandController)
+  (req, res, next) => {
+    brandController.getHealthStatus(req, res, next).catch(next);
+  }
 );
 
 router.post(
   '/:brandName/reset-circuit-breakers',
-  brandController.resetCircuitBreakers.bind(brandController)
+  async (req, res, next) => {
+    await brandController.resetCircuitBreakers(req, res, next);
+  }
 );
 
 export { router as brandRouter };

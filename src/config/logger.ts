@@ -4,7 +4,7 @@ import { Request, Response, NextFunction } from 'express';
 const isDevelopment = process.env.NODE_ENV === 'development';
 
 export const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
+  level: process.env.LOG_LEVEL ?? 'info',
   transport: isDevelopment
     ? {
         target: 'pino-pretty',
@@ -30,14 +30,14 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction): 
   const startTime = Date.now();
   
   req.log = logger.child({
-    requestId: req.headers['x-request-id'] || Date.now().toString(),
+    requestId: req.headers['x-request-id'] ?? Date.now().toString(),
   });
 
   res.on('finish', () => {
     const duration = Date.now() - startTime;
     const level = res.statusCode >= 400 ? 'error' : 'info';
     
-    req.log[level]({
+    (req.log as pino.Logger)[level]({
       req: {
         method: req.method,
         url: req.originalUrl,

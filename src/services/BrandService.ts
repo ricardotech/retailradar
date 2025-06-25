@@ -34,6 +34,13 @@ export class BrandService {
     await this.refreshProductData(brandName);
 
     const products = await this.productRepository.findBelowRetailProducts(brandName, query);
+    logger.info({
+      productsFromDb: products.map(p => ({
+        name: p.name,
+        retailPrice: p.retailPrice,
+        currentPrice: p.currentPrice
+      }))
+    }, 'Products fetched from DB');
     const total = await this.productRepository.countBelowRetailProducts(brandName, query);
     
     const lastProduct = products[products.length - 1];
@@ -41,7 +48,7 @@ export class BrandService {
       data: products.map(this.entityToDto),
       pagination: {
         ...(lastProduct && { cursor: this.productRepository.generateCursor(lastProduct) }),
-        hasNext: products.length === (query.limit || 20),
+        hasNext: products.length === (query.limit ?? 20),
         total,
       },
     };
@@ -61,7 +68,15 @@ export class BrandService {
 
   private async refreshProductData(brandName: string): Promise<void> {
     const freshProducts = await this.fetchProductsFromAdapters(brandName);
-    const entities = freshProducts.map(this.dtoToEntity);
+    const entities = freshProducts.map((p: Product) => this.dtoToEntity(p));
+
+    logger.info({ 
+      entitiesToSave: entities.map(e => ({ 
+        name: e.name, 
+        retailPrice: e.retailPrice, 
+        currentPrice: e.currentPrice 
+      })) 
+    }, 'Entities to be saved to the database');
     
     for (const entity of entities) {
       const existing = await this.productRepository.findByStockxUrl(entity.stockxUrl);
@@ -80,9 +95,24 @@ export class BrandService {
 
   private async fetchProductsFromAdapters(brandName: string): Promise<Product[]> {
     const products = await this.adapterManager.getBrandProducts(brandName);
+    logger.info({ 
+      productsFromAdapters: products.map(p => ({ 
+        name: p.name, 
+        retailPrice: p.retailPrice, 
+        currentPrice: p.currentPrice 
+      })) 
+    }, 'Products fetched from adapters');
+
     const belowRetailProducts = products.filter(product => 
       product.currentPrice < product.retailPrice
     );
+    logger.info({ 
+      belowRetailProducts: belowRetailProducts.map(p => ({ 
+        name: p.name, 
+        retailPrice: p.retailPrice, 
+        currentPrice: p.currentPrice 
+      })) 
+    }, 'Products filtered for below retail');
     
     return belowRetailProducts.map(product => ({
       ...product,
@@ -131,11 +161,11 @@ export class BrandService {
     return await this.adapterManager.getAdapterStats();
   }
 
-  async getHealthStatus(brandName: string) {
+  async getHealthStatus(): Promise<{ name: string; healthy: boolean; circuitBreakerState: import("/root/Projects/retail/retailradar/src/utils/CircuitBreaker").CircuitBreakerState; error?: unknown; }[]> {
     return await this.adapterManager.getHealthStatus();
   }
 
-  resetCircuitBreakers(brandName: string): void {
+  resetCircuitBreakers(): void {
     this.adapterManager.resetAllCircuitBreakers();
   }
 

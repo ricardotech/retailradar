@@ -66,7 +66,7 @@ export class BrandController {
       }
       const health = await this.brandService.getHealthStatus(brandName);
       
-      const response: ApiResponse<any> = {
+      const response: ApiResponse<unknown> = {
         success: true,
         data: health,
         timestamp: new Date().toISOString(),
@@ -90,7 +90,7 @@ export class BrandController {
       }
       this.brandService.resetCircuitBreakers(brandName);
       
-      const response: ApiResponse<any> = {
+      const response: ApiResponse<unknown> = {
         success: true,
         data: { message: `All circuit breakers have been reset for ${brandName}` },
         timestamp: new Date().toISOString(),

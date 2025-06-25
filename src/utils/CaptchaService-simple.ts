@@ -10,7 +10,7 @@ export class CaptchaService {
 
   constructor(config: CaptchaConfig) {
     this.apiKey = config.apiKey;
-    this.timeout = config.timeout || 60000;
+    this.timeout = config.timeout ?? 60000;
   }
 
   public isConfigured(): boolean {
@@ -18,12 +18,12 @@ export class CaptchaService {
   }
 
   // Currently deactivated - placeholder for future implementation
-  public async solveTurnstile(_siteKey: string, _pageUrl: string): Promise<string> {
+  public solveTurnstile(_siteKey: string, _pageUrl: string): Promise<string> {
     throw new Error('Captcha service is currently deactivated');
   }
 
   // Currently deactivated - placeholder for future implementation  
-  public async solveRecaptcha(_siteKey: string, _pageUrl: string): Promise<string> {
+  public solveRecaptcha(siteKey: string, pageUrl: string): Promise<string> {
     throw new Error('Captcha service is currently deactivated');
   }
 }

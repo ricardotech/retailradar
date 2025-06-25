@@ -11,7 +11,7 @@ export class CaptchaService {
 
   constructor(config: CaptchaServiceConfig) {
     this.apiKey = config.apiKey;
-    this.timeout = config.timeout || 60000;
+    this.timeout = config.timeout ?? 60000;
   }
 
   async solveTurnstile(siteKey: string, pageUrl: string): Promise<string> {
@@ -38,7 +38,7 @@ export class CaptchaService {
     }
   }
 
-  async solveRecaptcha(siteKey: string, pageUrl: string): Promise<string> {
+  async solveRecaptcha(_siteKey: string, _pageUrl: string): Promise<string> {
     if (!this.apiKey || this.apiKey === 'demo-key') {
       logger.warn('Captcha service not configured, skipping captcha solving');
       throw new Error('Captcha service not configured');

@@ -71,11 +71,11 @@ export class AdapterManager {
     throw combinedError;
   }
 
-  async getAdapterStats() {
+  async getAdapterStats(): Promise<{ name: string; state: import("/root/Projects/retail/retailradar/src/utils/CircuitBreaker").CircuitBreakerState; failureCount: number; lastFailureTime: string | undefined; nextAttempt: string | undefined; }[]> {
     return this.wrappedAdapters.map(adapter => adapter.getCircuitBreakerStats());
   }
 
-  async getHealthStatus() {
+  async getHealthStatus(): Promise<{ name: string; healthy: boolean; circuitBreakerState: import("/root/Projects/retail/retailradar/src/utils/CircuitBreaker").CircuitBreakerState; error?: unknown; }[]> {
     const results = await Promise.allSettled(
       this.wrappedAdapters.map(async adapter => ({
         name: adapter.getCircuitBreakerStats().name,
