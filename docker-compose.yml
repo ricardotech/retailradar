@@ -14,11 +14,13 @@ services:
       - DATABASE_PASSWORD=password
       - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=info
+      - XDG_CONFIG_HOME=/tmp/.chromium
+      - XDG_CACHE_HOME=/tmp/.chromium
+    cap_add:
+      - SYS_ADMIN
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - postgres
+      - redis
     restart: unless-stopped
 
   postgres:

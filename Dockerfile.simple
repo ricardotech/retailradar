@@ -7,24 +7,25 @@ USER root
 # Set environment variables for Chromium in containers
 ENV XDG_CONFIG_HOME=/tmp/.chromium
 ENV XDG_CACHE_HOME=/tmp/.chromium
+ENV NODE_ENV=production
 
-# Create and set up app directory
+# Create app directory
 WORKDIR /app
 
-# Copy package files and install only production dependencies
+# Copy package files for dependencies
 COPY package*.json ./
 
-# Install only the dependencies we need, skip optional ones to speed up
-RUN npm install --only=production --no-optional --silent
+# Install only essential runtime dependencies
+RUN npm install express puppeteer-extra puppeteer-extra-plugin-stealth --only=production --silent
 
-# Copy source files
+# Copy source files and TypeScript config
 COPY src/ ./src/
 COPY tsconfig-simple.json ./
 
-# Install TypeScript temporarily for build, then remove it
-RUN npm install typescript --no-save --silent && \
-    npm run build:simple && \
-    npm uninstall typescript --silent
+# Install TypeScript and build, then clean up
+RUN npm install -g typescript@latest --silent && \
+    npx tsc -p tsconfig-simple.json && \
+    npm uninstall -g typescript --silent
 
 # Change ownership to pptruser
 RUN chown -R pptruser:pptruser /app

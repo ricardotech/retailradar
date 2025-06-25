@@ -7,24 +7,16 @@ USER root
 # Set environment variables for Chromium in containers
 ENV XDG_CONFIG_HOME=/tmp/.chromium
 ENV XDG_CACHE_HOME=/tmp/.chromium
+ENV NODE_ENV=production
 
-# Create and set up app directory
+# Create app directory 
 WORKDIR /app
 
-# Copy package files and install only production dependencies
-COPY package*.json ./
+# Install puppeteer and express locally
+RUN npm install puppeteer express --no-save
 
-# Install only the dependencies we need, skip optional ones to speed up
-RUN npm install --only=production --no-optional --silent
-
-# Copy source files
-COPY src/ ./src/
-COPY tsconfig-simple.json ./
-
-# Install TypeScript temporarily for build, then remove it
-RUN npm install typescript --no-save --silent && \
-    npm run build:simple && \
-    npm uninstall typescript --silent
+# Copy the minimal JavaScript file
+COPY src/index-minimal.js ./index.js
 
 # Change ownership to pptruser
 RUN chown -R pptruser:pptruser /app
@@ -40,4 +32,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/healthz', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
 
 # Start the application
-CMD ["node", "dist/index-simple.js"]
+CMD ["node", "index.js"]

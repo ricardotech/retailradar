@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.simple
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+      - XDG_CONFIG_HOME=/tmp/.chromium
+      - XDG_CACHE_HOME=/tmp/.chromium
+    cap_add:
+      - SYS_ADMIN
+    restart: unless-stopped

@@ -1,15 +1,19 @@
-import { IStockXAdapter } from '@/adapters';
 import { Product, PaginatedResponse, SupremeProductsQuery } from '@/types';
 import { Product as ProductEntity } from '@/entities/Product';
 import { ProductRepository } from '@/repositories/ProductRepository';
+import { AdapterManager } from './AdapterManager';
 import { logger } from '@/config/logger';
 import { redisClient, CACHE_TTL } from '@/config/redis';
 
 export class SupremeService {
+  private adapterManager: AdapterManager;
+
   constructor(
-    private readonly adapters: IStockXAdapter[],
+    adapterManager: AdapterManager,
     private readonly productRepository: ProductRepository
-  ) {}
+  ) {
+    this.adapterManager = adapterManager;
+  }
 
   async getSupremeBelowRetail(
     query: SupremeProductsQuery
@@ -74,36 +78,15 @@ export class SupremeService {
   }
 
   private async fetchProductsFromAdapters(): Promise<Product[]> {
-    for (const adapter of this.adapters) {
-      try {
-        const isHealthy = await adapter.isHealthy();
-        if (!isHealthy) {
-          logger.warn(`Adapter ${adapter.constructor.name} is unhealthy, skipping`);
-          continue;
-        }
-
-        const products = await adapter.getSupremeProducts();
-        const belowRetailProducts = products.filter(product => 
-          product.currentPrice < product.retailPrice
-        );
-        
-        logger.info(
-          `Successfully fetched ${belowRetailProducts.length} below-retail products from ${adapter.constructor.name}`
-        );
-        return belowRetailProducts.map(product => ({
-          ...product,
-          discountPercentage: this.calculateDiscountPercentage(product.retailPrice, product.currentPrice)
-        }));
-      } catch (error) {
-        logger.error(
-          `Error fetching from ${adapter.constructor.name}:`,
-          error
-        );
-        continue;
-      }
-    }
-
-    throw new Error('All adapters failed to fetch products');
+    const products = await this.adapterManager.getSupremeProducts();
+    const belowRetailProducts = products.filter(product => 
+      product.currentPrice < product.retailPrice
+    );
+    
+    return belowRetailProducts.map(product => ({
+      ...product,
+      discountPercentage: this.calculateDiscountPercentage(product.retailPrice, product.currentPrice)
+    }));
   }
 
   private calculateDiscountPercentage(retailPrice: number, currentPrice: number): number {
@@ -141,6 +124,18 @@ export class SupremeService {
     if (dto.imageUrl) entity.imageUrl = dto.imageUrl;
     entity.stockxUrl = dto.stockxUrl;
     return entity;
+  }
+
+  async getAdapterStats() {
+    return await this.adapterManager.getAdapterStats();
+  }
+
+  async getHealthStatus() {
+    return await this.adapterManager.getHealthStatus();
+  }
+
+  resetCircuitBreakers(): void {
+    this.adapterManager.resetAllCircuitBreakers();
   }
 
   private generateCacheKey(query: SupremeProductsQuery): string {

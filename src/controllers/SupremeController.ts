@@ -25,4 +25,64 @@ export class SupremeController {
       next(error);
     }
   }
+
+  async getAdapterStats(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const stats = await this.supremeService.getAdapterStats();
+      
+      const response: ApiResponse<any> = {
+        success: true,
+        data: stats,
+        timestamp: new Date().toISOString(),
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getHealthStatus(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const health = await this.supremeService.getHealthStatus();
+      
+      const response: ApiResponse<any> = {
+        success: true,
+        data: health,
+        timestamp: new Date().toISOString(),
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async resetCircuitBreakers(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      this.supremeService.resetCircuitBreakers();
+      
+      const response: ApiResponse<any> = {
+        success: true,
+        data: { message: 'All circuit breakers have been reset' },
+        timestamp: new Date().toISOString(),
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
