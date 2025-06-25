@@ -1,6 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import { IStockXAdapter } from './IStockXAdapter';
-import { Product, DataSource } from '@/types';
+import { Product } from '@/types';
 import { logger } from '@/config/logger';
 import { ExternalApiError } from '@/middleware/error-handler';
 
@@ -96,7 +96,7 @@ export class RapidApiAdapter implements IStockXAdapter {
           retailPrice,
           currentPrice,
           discountPercentage,
-          imageUrl: item.image?.small,
+          ...(item.image?.small && { imageUrl: item.image.small }),
           stockxUrl: `https://stockx.com/${item.urlKey}`,
           lastUpdated: new Date(),
         };

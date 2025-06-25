@@ -35,3 +35,20 @@ export const validateBody = (schema: z.ZodSchema) => {
     }
   };
 };
+
+export const validateParams = (schema: z.ZodSchema) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    try {
+      const validatedParams = schema.parse(req.params);
+      req.params = validatedParams;
+      next();
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const message = error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+        next(new ValidationError(`Invalid path parameters: ${message}`));
+      } else {
+        next(error);
+      }
+    }
+  };
+};

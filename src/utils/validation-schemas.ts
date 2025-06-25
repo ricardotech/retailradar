@@ -25,3 +25,29 @@ export const SupremeProductsQuerySchema = z.object({
       message: 'limit must be between 1 and 100',
     }),
 });
+
+export const ProductIdSchema = z.object({
+  id: z.string().uuid({
+    message: 'Product ID must be a valid UUID',
+  }),
+});
+
+export const PaginationSchema = z.object({
+  cursor: z.string().optional(),
+  limit: z
+    .string()
+    .optional()
+    .transform((val) => (val ? parseInt(val, 10) : 20))
+    .refine((val) => val >= 1 && val <= 100, {
+      message: 'limit must be between 1 and 100',
+    }),
+});
+
+export const HealthCheckResponseSchema = z.object({
+  status: z.enum(['healthy', 'unhealthy']),
+  timestamp: z.string().datetime(),
+  services: z.record(z.object({
+    status: z.enum(['up', 'down']),
+    responseTime: z.number().optional(),
+  })),
+});

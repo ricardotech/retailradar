@@ -1,10 +1,15 @@
 import { IStockXAdapter } from '@/adapters';
 import { Product, PaginatedResponse, SupremeProductsQuery } from '@/types';
+import { Product as ProductEntity } from '@/entities/Product';
+import { ProductRepository } from '@/repositories/ProductRepository';
 import { logger } from '@/config/logger';
 import { redisClient, CACHE_TTL } from '@/config/redis';
 
 export class SupremeService {
-  constructor(private readonly adapters: IStockXAdapter[]) {}
+  constructor(
+    private readonly adapters: IStockXAdapter[],
+    private readonly productRepository: ProductRepository
+  ) {}
 
   async getSupremeBelowRetail(
     query: SupremeProductsQuery
@@ -21,10 +26,20 @@ export class SupremeService {
       logger.warn('Cache read failed:', error);
     }
 
-    const products = await this.fetchProductsFromAdapters();
-    const filteredProducts = this.applyFilters(products, query);
-    const sortedProducts = this.sortByDiscount(filteredProducts);
-    const paginatedResult = this.applyPagination(sortedProducts, query);
+    await this.refreshProductData();
+
+    const products = await this.productRepository.findBelowRetailProducts(query);
+    const total = await this.productRepository.countBelowRetailProducts(query);
+    
+    const lastProduct = products[products.length - 1];
+    const paginatedResult: PaginatedResponse<Product> = {
+      data: products.map(this.entityToDto),
+      pagination: {
+        ...(lastProduct && { cursor: this.productRepository.generateCursor(lastProduct) }),
+        hasNext: products.length === (query.limit || 20),
+        total,
+      },
+    };
 
     try {
       await redisClient.setEx(
@@ -39,6 +54,25 @@ export class SupremeService {
     return paginatedResult;
   }
 
+  private async refreshProductData(): Promise<void> {
+    const freshProducts = await this.fetchProductsFromAdapters();
+    const entities = freshProducts.map(this.dtoToEntity);
+    
+    for (const entity of entities) {
+      const existing = await this.productRepository.findByStockxUrl(entity.stockxUrl);
+      if (existing) {
+        entity.id = existing.id;
+        await this.productRepository.update(existing.id, {
+          currentPrice: entity.currentPrice,
+          discountPercentage: entity.discountPercentage,
+          updatedAt: new Date(),
+        });
+      } else {
+        await this.productRepository.save(entity);
+      }
+    }
+  }
+
   private async fetchProductsFromAdapters(): Promise<Product[]> {
     for (const adapter of this.adapters) {
       try {
@@ -49,10 +83,17 @@ export class SupremeService {
         }
 
         const products = await adapter.getSupremeProducts();
-        logger.info(
-          `Successfully fetched ${products.length} products from ${adapter.constructor.name}`
+        const belowRetailProducts = products.filter(product => 
+          product.currentPrice < product.retailPrice
         );
-        return products;
+        
+        logger.info(
+          `Successfully fetched ${belowRetailProducts.length} below-retail products from ${adapter.constructor.name}`
+        );
+        return belowRetailProducts.map(product => ({
+          ...product,
+          discountPercentage: this.calculateDiscountPercentage(product.retailPrice, product.currentPrice)
+        }));
       } catch (error) {
         logger.error(
           `Error fetching from ${adapter.constructor.name}:`,
@@ -65,63 +106,41 @@ export class SupremeService {
     throw new Error('All adapters failed to fetch products');
   }
 
-  private applyFilters(products: Product[], query: SupremeProductsQuery): Product[] {
-    let filtered = products;
-
-    if (query.minDiscount !== undefined) {
-      filtered = filtered.filter(
-        (product) => product.discountPercentage >= query.minDiscount!
-      );
-    }
-
-    if (query.maxPrice !== undefined) {
-      filtered = filtered.filter(
-        (product) => product.currentPrice <= query.maxPrice!
-      );
-    }
-
-    if (query.size) {
-      filtered = filtered.filter(
-        (product) => product.size === query.size
-      );
-    }
-
-    return filtered;
+  private calculateDiscountPercentage(retailPrice: number, currentPrice: number): number {
+    if (retailPrice <= 0) return 0;
+    return Number(((retailPrice - currentPrice) / retailPrice).toFixed(4));
   }
 
-  private sortByDiscount(products: Product[]): Product[] {
-    return products.sort((a, b) => b.discountPercentage - a.discountPercentage);
-  }
-
-  private applyPagination(
-    products: Product[],
-    query: SupremeProductsQuery
-  ): PaginatedResponse<Product> {
-    const limit = query.limit || 20;
-    let startIndex = 0;
-
-    if (query.cursor) {
-      const cursorIndex = products.findIndex(
-        (product) => product.id === query.cursor
-      );
-      if (cursorIndex !== -1) {
-        startIndex = cursorIndex + 1;
-      }
-    }
-
-    const endIndex = startIndex + limit;
-    const paginatedProducts = products.slice(startIndex, endIndex);
-    const hasNext = endIndex < products.length;
-    const nextCursor = hasNext ? paginatedProducts[paginatedProducts.length - 1]?.id : undefined;
-
+  private entityToDto(entity: ProductEntity): Product {
     return {
-      data: paginatedProducts,
-      pagination: {
-        cursor: nextCursor,
-        hasNext,
-        total: products.length,
-      },
+      id: entity.id,
+      name: entity.name,
+      brand: entity.brand,
+      colorway: entity.colorway,
+      retailPrice: entity.retailPrice,
+      currentPrice: entity.currentPrice,
+      discountPercentage: entity.discountPercentage,
+      ...(entity.size && { size: entity.size }),
+      ...(entity.sku && { sku: entity.sku }),
+      ...(entity.imageUrl && { imageUrl: entity.imageUrl }),
+      stockxUrl: entity.stockxUrl,
+      lastUpdated: entity.updatedAt,
     };
+  }
+
+  private dtoToEntity(dto: Product): ProductEntity {
+    const entity = new ProductEntity();
+    entity.name = dto.name;
+    entity.brand = dto.brand;
+    entity.colorway = dto.colorway;
+    entity.retailPrice = dto.retailPrice;
+    entity.currentPrice = dto.currentPrice;
+    entity.discountPercentage = dto.discountPercentage;
+    if (dto.size) entity.size = dto.size;
+    if (dto.sku) entity.sku = dto.sku;
+    if (dto.imageUrl) entity.imageUrl = dto.imageUrl;
+    entity.stockxUrl = dto.stockxUrl;
+    return entity;
   }
 
   private generateCacheKey(query: SupremeProductsQuery): string {
