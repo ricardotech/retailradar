@@ -84,17 +84,11 @@ export class PuppeteerAdapter implements IStockXAdapter {
       const puppeteerOptions: import("puppeteer").PuppeteerLaunchOptions = {
         headless: 'new',
         args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
+          // Recommended flags for running in Docker.
+          // '--no-sandbox' is NOT needed because the official image is set up to use it.
           '--disable-dev-shm-usage',
           '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
           '--disable-gpu',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-features=VizDisplayCompositor'
         ],
         defaultViewport: {
           width: 1920,
@@ -102,9 +96,10 @@ export class PuppeteerAdapter implements IStockXAdapter {
         }
       };
 
-      // In Docker environment with official Puppeteer image, 
-      // Puppeteer will automatically use the bundled Chromium
-      // No need to set executablePath as it's handled by the image
+      // When using the official Puppeteer Docker image, Puppeteer automatically
+      // detects and uses the bundled Chromium browser, so 'executablePath' is not needed.
+      // The sandbox is enabled by default and works because the container
+      // is run with the SYS_ADMIN capability.
 
       this.browser = await puppeteer.launch(puppeteerOptions);
     }

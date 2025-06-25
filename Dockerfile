@@ -1,43 +1,47 @@
-# Use the official Puppeteer Docker image
-FROM ghcr.io/puppeteer/puppeteer:latest
+# Stage 1: Build the application
+# Use a specific version of the official Puppeteer image that matches your package.json
+FROM ghcr.io/puppeteer/puppeteer:21.5.2 AS builder
 
-# Switch to root for setup
+# The base image has a non-root user 'pptruser', but we need root for npm install.
 USER root
+WORKDIR /app
 
-# Set environment variables for Chromium in containers
+# Install all dependencies and build the app
+COPY package*.json ./
+RUN npm install --omit=optional
+COPY . .
+RUN npm run build:simple
+
+# Stage 2: Create the production image
+FROM ghcr.io/puppeteer/puppeteer:21.5.2
+
+USER root
+WORKDIR /app
+
+# Set environment variables
+ENV NODE_ENV=production
+# Set cache directories to a temporary location to avoid permission issues
 ENV XDG_CONFIG_HOME=/tmp/.chromium
 ENV XDG_CACHE_HOME=/tmp/.chromium
 
-# Create and set up app directory
-WORKDIR /app
-
 # Copy package files and install only production dependencies
-COPY package*.json ./
+COPY --from=builder /app/package*.json ./
+RUN npm install --production --omit=optional
 
-# Install only the dependencies we need, skip optional ones to speed up
-RUN npm install --only=production --no-optional --silent
+# Copy the built application from the builder stage
+COPY --from=builder /app/dist ./dist
 
-# Copy source files
-COPY src/ ./src/
-COPY tsconfig-simple.json ./
-
-# Install TypeScript temporarily for build, then remove it
-RUN npm install typescript --no-save --silent && \
-    npm run build:simple && \
-    npm uninstall typescript --silent
-
-# Change ownership to pptruser
+# Give the non-root user ownership of the app files
 RUN chown -R pptruser:pptruser /app
 
-# Switch to non-root user
+# Switch to the non-root user for security
 USER pptruser
 
-# Expose port
 EXPOSE 3000
 
-# Health check
+# Healthcheck to ensure the application is running correctly
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/healthz', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+  CMD node -e "require('http').get('http://localhost:3000/healthz', (res) => process.exit(res.statusCode === 200 ? 0 : 1))"
 
-# Start the application
+# The command to run the application
 CMD ["node", "dist/index-simple.js"]
