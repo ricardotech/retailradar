@@ -37,13 +37,15 @@ export interface PaginatedResponse<T> {
   };
 }
 
-export interface SupremeProductsQuery {
+export interface BrandProductsQuery {
   minDiscount?: number;
   maxPrice?: number;
   size?: string;
   cursor?: string;
   limit?: number;
 }
+
+export type SupremeProductsQuery = BrandProductsQuery;
 
 export interface ApiResponse<T> {
   success: boolean;

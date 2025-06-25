@@ -30,13 +30,13 @@ export class CircuitBreakerAdapter implements IStockXAdapter {
     );
   }
 
-  async getSupremeProducts(): Promise<Product[]> {
+  async getBrandProducts(brandName: string): Promise<Product[]> {
     return this.circuitBreaker.execute(async () => {
-      logger.info(`Executing getSupremeProducts through ${this.adapterName} adapter`);
-      const products = await this.adapter.getSupremeProducts();
+      logger.info(`Executing getBrandProducts for ${brandName} through ${this.adapterName} adapter`);
+      const products = await this.adapter.getBrandProducts(brandName);
       
       if (!products || products.length === 0) {
-        throw new Error(`${this.adapterName} adapter returned no products`);
+        throw new Error(`${this.adapterName} adapter returned no products for ${brandName}`);
       }
       
       return products;

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const SupremeProductsQuerySchema = z.object({
+export const BrandProductsQuerySchema = z.object({
   minDiscount: z
     .string()
     .optional()
@@ -25,6 +25,8 @@ export const SupremeProductsQuerySchema = z.object({
       message: 'limit must be between 1 and 100',
     }),
 });
+
+export const SupremeProductsQuerySchema = BrandProductsQuerySchema;
 
 export const ProductIdSchema = z.object({
   id: z.string().uuid({

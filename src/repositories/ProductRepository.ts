@@ -1,6 +1,6 @@
 import { Repository, DataSource as TypeORMDataSource, SelectQueryBuilder } from 'typeorm';
 import { Product } from '@/entities/Product';
-import { SupremeProductsQuery } from '@/types';
+import { BrandProductsQuery } from '@/types';
 
 export class ProductRepository {
   private repository: Repository<Product>;
@@ -10,13 +10,14 @@ export class ProductRepository {
   }
 
   async findBelowRetailProducts(
-    query: SupremeProductsQuery
+    brandName: string,
+    query: BrandProductsQuery
   ): Promise<Product[]> {
     const queryBuilder = this.repository
       .createQueryBuilder('product')
       .leftJoinAndSelect('product.prices', 'price')
       .where('product.currentPrice < product.retailPrice')
-      .andWhere('product.brand = :brand', { brand: 'Supreme' });
+      .andWhere('product.brand = :brand', { brand: brandName });
 
     this.applyFilters(queryBuilder, query);
     this.applySorting(queryBuilder);
@@ -26,12 +27,13 @@ export class ProductRepository {
   }
 
   async countBelowRetailProducts(
-    query: Omit<SupremeProductsQuery, 'cursor' | 'limit'>
+    brandName: string,
+    query: Omit<BrandProductsQuery, 'cursor' | 'limit'>
   ): Promise<number> {
     const queryBuilder = this.repository
       .createQueryBuilder('product')
       .where('product.currentPrice < product.retailPrice')
-      .andWhere('product.brand = :brand', { brand: 'Supreme' });
+      .andWhere('product.brand = :brand', { brand: brandName });
 
     this.applyFilters(queryBuilder, query);
 
@@ -70,7 +72,7 @@ export class ProductRepository {
 
   private applyFilters(
     queryBuilder: SelectQueryBuilder<Product>,
-    query: SupremeProductsQuery
+    query: BrandProductsQuery
   ): void {
     if (query.minDiscount !== undefined) {
       queryBuilder.andWhere('product.discountPercentage >= :minDiscount', {
@@ -96,7 +98,7 @@ export class ProductRepository {
 
   private applyPagination(
     queryBuilder: SelectQueryBuilder<Product>,
-    query: SupremeProductsQuery
+    query: BrandProductsQuery
   ): void {
     const limit = query.limit || 20;
     queryBuilder.limit(limit);

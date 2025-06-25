@@ -18,7 +18,7 @@ async function testPuppeteerAdapter(): Promise<void> {
     
     // Test product scraping
     console.log('🛍️ Scraping Supreme products below retail...');
-    const products = await adapter.getSupremeProducts();
+    const products = await adapter.getBrandProducts('Supreme');
     
     console.log(`📦 Found ${products.length} Supreme products below retail`);
     

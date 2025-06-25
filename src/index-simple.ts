@@ -20,10 +20,10 @@ app.get('/api/supreme/products', async (req, res) => {
   
   try {
     console.log('Starting Supreme product scraping...');
-    const products = await adapter.getSupremeProducts();
+    const products = await adapter.getBrandProducts('Supreme');
     
     // Format response as requested
-    const formattedProducts = products.map(product => ({
+    const formattedProducts = products.map((product: any) => ({
       name: product.name,
       belowRetail: `${product.discountPercentage.toFixed(2)}%`,
       retail: `$${product.retailPrice}`,

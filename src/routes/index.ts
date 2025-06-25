@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { supremeRouter } from './supreme';
+import { brandRouter } from './brand';
 
 const router = Router();
 
-router.use('/supreme', supremeRouter);
+router.use('/radar', brandRouter);
 
 export { router as apiRouter };

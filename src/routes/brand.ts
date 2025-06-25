@@ -1,12 +1,12 @@
 import { Router } from 'express';
-import { SupremeController } from '@/controllers/SupremeController';
-import { SupremeService } from '@/services/SupremeService';
+import { BrandController } from '@/controllers/BrandController';
+import { BrandService } from '@/services/BrandService';
 import { AdapterManager } from '@/services/AdapterManager';
 import { ProductRepository } from '@/repositories/ProductRepository';
 import { RapidApiAdapter, OfficialStockXAdapter, PuppeteerAdapter } from '@/adapters';
 import { AppDataSource } from '@/config/database';
 import { validateQuery } from '@/middleware/validation';
-import { SupremeProductsQuerySchema } from '@/utils/validation-schemas';
+import { BrandProductsQuerySchema } from '@/utils/validation-schemas';
 
 const router = Router();
 
@@ -45,28 +45,28 @@ const adapterManager = new AdapterManager([
 ]);
 
 const productRepository = new ProductRepository(AppDataSource);
-const supremeService = new SupremeService(adapterManager, productRepository);
-const supremeController = new SupremeController(supremeService);
+const brandService = new BrandService(adapterManager, productRepository);
+const brandController = new BrandController(brandService);
 
 router.get(
-  '/below-retail',
-  validateQuery(SupremeProductsQuerySchema),
-  supremeController.getBelowRetailProducts.bind(supremeController)
+  '/:brandName/below-retail',
+  validateQuery(BrandProductsQuerySchema),
+  brandController.getBelowRetailProducts.bind(brandController)
 );
 
 router.get(
-  '/adapter-stats',
-  supremeController.getAdapterStats.bind(supremeController)
+  '/:brandName/adapter-stats',
+  brandController.getAdapterStats.bind(brandController)
 );
 
 router.get(
-  '/health',
-  supremeController.getHealthStatus.bind(supremeController)
+  '/:brandName/health',
+  brandController.getHealthStatus.bind(brandController)
 );
 
 router.post(
-  '/reset-circuit-breakers',
-  supremeController.resetCircuitBreakers.bind(supremeController)
+  '/:brandName/reset-circuit-breakers',
+  brandController.resetCircuitBreakers.bind(brandController)
 );
 
-export { router as supremeRouter };
+export { router as brandRouter };

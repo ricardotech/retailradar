@@ -14,12 +14,21 @@ app.get('/healthz', (req, res) => {
   });
 });
 
-// Supreme products endpoint using Puppeteer
-app.get('/api/supreme/products', async (req, res) => {
+// Dynamic brand products endpoint using Puppeteer
+app.get('/api/v1/radar/:brandName/below-retail', async (req, res) => {
   let browser;
   
   try {
-    console.log('Starting Supreme product scraping...');
+    const brandName = req.params.brandName;
+    if (!brandName) {
+      return res.status(400).json({
+        success: false,
+        error: 'Brand name is required',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    console.log(`Starting ${brandName} product scraping...`);
     
     browser = await puppeteer.launch({
       headless: 'new',
@@ -54,8 +63,8 @@ app.get('/api/supreme/products', async (req, res) => {
       'Upgrade-Insecure-Requests': '1',
     });
 
-    console.log('Navigating to StockX Supreme page...');
-    await page.goto('https://stockx.com/brands/supreme?below-retail=true&sort=recent_asks', { 
+    console.log(`Navigating to StockX ${brandName} page...`);
+    await page.goto(`https://stockx.com/brands/${brandName.toLowerCase()}?below-retail=true&sort=recent_asks`, { 
       waitUntil: 'networkidle2',
       timeout: 60000 
     });
@@ -73,7 +82,7 @@ app.get('/api/supreme/products', async (req, res) => {
     await new Promise(resolve => setTimeout(resolve, 3000));
     
     console.log('Scraping products...');
-    const products = await page.evaluate(() => {
+    const products = await page.evaluate((brandName) => {
       const productElements = document.querySelectorAll('[data-testid="ProductTile"]');
       const results = [];
 
@@ -83,7 +92,7 @@ app.get('/api/supreme/products', async (req, res) => {
           if (!nameElement) return;
 
           const name = nameElement.textContent?.trim();
-          if (!name || !name.toLowerCase().includes('supreme')) return;
+          if (!name || !name.toLowerCase().includes(brandName.toLowerCase())) return;
 
           const priceElement = element.querySelector('[data-testid="product-tile-lowest-ask-amount"]');
           if (!priceElement) return;
@@ -103,18 +112,24 @@ app.get('/api/supreme/products', async (req, res) => {
 
           let estimatedRetailPrice = 0;
           
-          if (name.toLowerCase().includes('hooded sweatshirt') || name.toLowerCase().includes('hoodie')) {
-            estimatedRetailPrice = Math.max(currentPrice * 1.2, 148);
-          } else if (name.toLowerCase().includes('jacket') || name.toLowerCase().includes('coat')) {
-            estimatedRetailPrice = Math.max(currentPrice * 1.3, 298);
-          } else if (name.toLowerCase().includes('t-shirt') || name.toLowerCase().includes('tee')) {
-            estimatedRetailPrice = Math.max(currentPrice * 1.25, 48);
-          } else if (name.toLowerCase().includes('crewneck') || name.toLowerCase().includes('sweater')) {
-            estimatedRetailPrice = Math.max(currentPrice * 1.2, 138);
-          } else if (name.toLowerCase().includes('pants') || name.toLowerCase().includes('shorts')) {
-            estimatedRetailPrice = Math.max(currentPrice * 1.25, 118);
+          // Adjust pricing estimation based on brand
+          if (brandName.toLowerCase() === 'supreme') {
+            if (name.toLowerCase().includes('hooded sweatshirt') || name.toLowerCase().includes('hoodie')) {
+              estimatedRetailPrice = Math.max(currentPrice * 1.2, 148);
+            } else if (name.toLowerCase().includes('jacket') || name.toLowerCase().includes('coat')) {
+              estimatedRetailPrice = Math.max(currentPrice * 1.3, 298);
+            } else if (name.toLowerCase().includes('t-shirt') || name.toLowerCase().includes('tee')) {
+              estimatedRetailPrice = Math.max(currentPrice * 1.25, 48);
+            } else if (name.toLowerCase().includes('crewneck') || name.toLowerCase().includes('sweater')) {
+              estimatedRetailPrice = Math.max(currentPrice * 1.2, 138);
+            } else if (name.toLowerCase().includes('pants') || name.toLowerCase().includes('shorts')) {
+              estimatedRetailPrice = Math.max(currentPrice * 1.25, 118);
+            } else {
+              estimatedRetailPrice = Math.max(currentPrice * 1.3, 50);
+            }
           } else {
-            estimatedRetailPrice = Math.max(currentPrice * 1.3, 50);
+            // Generic estimation for other brands
+            estimatedRetailPrice = Math.max(currentPrice * 1.4, 100);
           }
 
           if (currentPrice >= estimatedRetailPrice) return;
@@ -137,9 +152,9 @@ app.get('/api/supreme/products', async (req, res) => {
       });
 
       return results;
-    });
+    }, brandName);
     
-    console.log(`Found ${products.length} Supreme products below retail`);
+    console.log(`Found ${products.length} ${brandName} products below retail`);
     
     res.json({
       success: true,
@@ -148,10 +163,10 @@ app.get('/api/supreme/products', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Error scraping Supreme products:', error);
+    console.error(`Error scraping ${req.params.brandName || 'brand'} products:`, error);
     res.status(500).json({
       success: false,
-      error: 'Failed to scrape Supreme products',
+      error: `Failed to scrape ${req.params.brandName || 'brand'} products`,
       timestamp: new Date().toISOString()
     });
   } finally {
@@ -165,5 +180,7 @@ app.listen(port, () => {
   console.log(`🚀 RetailRadar server running on http://localhost:${port}`);
   console.log(`📊 API endpoints:`);
   console.log(`   GET /healthz - Health check`);
-  console.log(`   GET /api/supreme/products - Supreme products below retail`);
+  console.log(`   GET /api/v1/radar/:brandName/below-retail - Brand products below retail`);
+  console.log(`   Example: GET /api/v1/radar/supreme/below-retail - Supreme products below retail`);
+  console.log(`   Example: GET /api/v1/radar/nike/below-retail - Nike products below retail`);
 });

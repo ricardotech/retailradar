@@ -50,9 +50,9 @@ export class OfficialStockXAdapter implements IStockXAdapter {
     });
   }
 
-  async getSupremeProducts(): Promise<Product[]> {
+  async getBrandProducts(brandName: string): Promise<Product[]> {
     try {
-      logger.info('Fetching Supreme products from Official StockX API');
+      logger.info(`Fetching ${brandName} products from Official StockX API`);
 
       const allProducts: Product[] = [];
       let cursor: string | undefined;
@@ -61,7 +61,7 @@ export class OfficialStockXAdapter implements IStockXAdapter {
       while (hasMore && allProducts.length < 1000) {
         const response = await this.client.get<OfficialStockXResponse>('/catalog/search', {
           params: {
-            query: 'supreme',
+            query: brandName.toLowerCase(),
             productCategory: 'sneakers',
             limit: 100,
             ...(cursor && { cursor }),
@@ -69,7 +69,7 @@ export class OfficialStockXAdapter implements IStockXAdapter {
         });
 
         const products = response.data?.data?.products || [];
-        const transformedProducts = this.transformProducts(products);
+        const transformedProducts = this.transformProducts(products, brandName);
         allProducts.push(...transformedProducts);
 
         hasMore = response.data?.data?.pagination?.hasNext || false;
@@ -85,7 +85,7 @@ export class OfficialStockXAdapter implements IStockXAdapter {
       );
 
       logger.info(
-        `Found ${belowRetailProducts.length} Supreme products below retail from Official API`
+        `Found ${belowRetailProducts.length} ${brandName} products below retail from Official API`
       );
 
       return belowRetailProducts;
@@ -118,9 +118,9 @@ export class OfficialStockXAdapter implements IStockXAdapter {
     }
   }
 
-  private transformProducts(apiProducts: OfficialStockXProduct[]): Product[] {
+  private transformProducts(apiProducts: OfficialStockXProduct[], brandName: string): Product[] {
     return apiProducts
-      .filter((item) => item.brand?.toLowerCase() === 'supreme')
+      .filter((item) => item.brand?.toLowerCase() === brandName.toLowerCase())
       .map((item) => {
         const currentPrice = item.market?.lowestAsk || item.market?.lastSale || 0;
         const retailPrice = item.retailPrice || 0;

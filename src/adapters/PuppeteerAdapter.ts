@@ -10,7 +10,6 @@ puppeteer.use(StealthPlugin());
 
 export class PuppeteerAdapter implements IStockXAdapter {
   private browser: Browser | null = null;
-  private readonly baseUrl = 'https://stockx.com/brands/supreme?below-retail=true&sort=recent_asks';
   private captchaService: CaptchaService; // Kept for future use but currently deactivated
 
   // Method to check if captcha service is configured (currently unused)
@@ -25,28 +24,29 @@ export class PuppeteerAdapter implements IStockXAdapter {
     });
   }
 
-  async getSupremeProducts(): Promise<Product[]> {
+  async getBrandProducts(brandName: string): Promise<Product[]> {
     let page: Page | null = null;
     
     try {
       await this.initializeBrowser();
       page = await this.createPage();
       
-      logger.info('Navigating to StockX Supreme page');
-      await page.goto(this.baseUrl, { 
+      const baseUrl = `https://stockx.com/brands/${brandName.toLowerCase()}?below-retail=true&sort=recent_asks`;
+      logger.info(`Navigating to StockX ${brandName} page`);
+      await page.goto(baseUrl, { 
         waitUntil: 'networkidle2',
         timeout: 60000 
       });
 
       await this.handleCaptchaIfPresent(page);
       await this.waitForPageLoad(page);
-      const products = await this.scrapeProducts(page);
+      const products = await this.scrapeProducts(page, brandName);
       
-      logger.info(`Successfully scraped ${products.length} Supreme products below retail`);
+      logger.info(`Successfully scraped ${products.length} ${brandName} products below retail`);
       return products;
       
     } catch (error) {
-      logger.error('Error scraping Supreme products:', error);
+      logger.error(`Error scraping ${brandName} products:`, error);
       throw new Error(`Puppeteer scraping failed: ${(error as Error).message}`);
     } finally {
       if (page) {
@@ -214,8 +214,8 @@ export class PuppeteerAdapter implements IStockXAdapter {
     }
   }
 
-  private async scrapeProducts(page: Page): Promise<Product[]> {
-    const products = await page.evaluate(() => {
+  private async scrapeProducts(page: Page, brandName: string): Promise<Product[]> {
+    const products = await page.evaluate((brandName) => {
       // Use the actual StockX HTML structure
       const productElements = (window as any).document.querySelectorAll('[data-testid="ProductTile"]');
       const results: any[] = [];
@@ -227,7 +227,7 @@ export class PuppeteerAdapter implements IStockXAdapter {
           if (!nameElement) return;
 
           const name = nameElement.textContent?.trim();
-          if (!name || !name.toLowerCase().includes('supreme')) return;
+          if (!name || !name.toLowerCase().includes(brandName.toLowerCase())) return;
 
           // Extract current price (Lowest Ask)
           const priceElement = element.querySelector('[data-testid="product-tile-lowest-ask-amount"]');
@@ -250,23 +250,28 @@ export class PuppeteerAdapter implements IStockXAdapter {
 
           // For below-retail page, we need to estimate retail price
           // Since StockX doesn't show retail price directly, we'll estimate it
-          // Based on typical Supreme pricing patterns and current ask
+          // Based on typical brand pricing patterns and current ask
           let estimatedRetailPrice = 0;
           
-          // Common Supreme retail price patterns based on product type
-          if (name.toLowerCase().includes('hooded sweatshirt') || name.toLowerCase().includes('hoodie')) {
-            estimatedRetailPrice = Math.max(currentPrice * 1.2, 148); // Hoodies typically retail $148-168
-          } else if (name.toLowerCase().includes('jacket') || name.toLowerCase().includes('coat')) {
-            estimatedRetailPrice = Math.max(currentPrice * 1.3, 298); // Jackets typically retail $298-498
-          } else if (name.toLowerCase().includes('t-shirt') || name.toLowerCase().includes('tee')) {
-            estimatedRetailPrice = Math.max(currentPrice * 1.25, 48); // Tees typically retail $48-58
-          } else if (name.toLowerCase().includes('crewneck') || name.toLowerCase().includes('sweater')) {
-            estimatedRetailPrice = Math.max(currentPrice * 1.2, 138); // Crewnecks typically retail $138-158
-          } else if (name.toLowerCase().includes('pants') || name.toLowerCase().includes('shorts')) {
-            estimatedRetailPrice = Math.max(currentPrice * 1.25, 118); // Bottoms typically retail $118-188
+          // Adjust pricing estimation based on brand
+          if (brandName.toLowerCase() === 'supreme') {
+            // Common Supreme retail price patterns based on product type
+            if (name.toLowerCase().includes('hooded sweatshirt') || name.toLowerCase().includes('hoodie')) {
+              estimatedRetailPrice = Math.max(currentPrice * 1.2, 148); // Hoodies typically retail $148-168
+            } else if (name.toLowerCase().includes('jacket') || name.toLowerCase().includes('coat')) {
+              estimatedRetailPrice = Math.max(currentPrice * 1.3, 298); // Jackets typically retail $298-498
+            } else if (name.toLowerCase().includes('t-shirt') || name.toLowerCase().includes('tee')) {
+              estimatedRetailPrice = Math.max(currentPrice * 1.25, 48); // Tees typically retail $48-58
+            } else if (name.toLowerCase().includes('crewneck') || name.toLowerCase().includes('sweater')) {
+              estimatedRetailPrice = Math.max(currentPrice * 1.2, 138); // Crewnecks typically retail $138-158
+            } else if (name.toLowerCase().includes('pants') || name.toLowerCase().includes('shorts')) {
+              estimatedRetailPrice = Math.max(currentPrice * 1.25, 118); // Bottoms typically retail $118-188
+            } else {
+              estimatedRetailPrice = Math.max(currentPrice * 1.3, 50);
+            }
           } else {
-            // Default estimation for other items
-            estimatedRetailPrice = Math.max(currentPrice * 1.3, 50);
+            // Generic estimation for other brands
+            estimatedRetailPrice = Math.max(currentPrice * 1.4, 100);
           }
 
           // Only include if it appears to be below estimated retail
@@ -281,7 +286,7 @@ export class PuppeteerAdapter implements IStockXAdapter {
           results.push({
             id: `puppeteer-${index}-${Date.now()}`,
             name: name,
-            brand: 'Supreme',
+            brand: brandName,
             colorway: colorway,
             retailPrice: estimatedRetailPrice,
             currentPrice: currentPrice,
@@ -296,7 +301,7 @@ export class PuppeteerAdapter implements IStockXAdapter {
       });
 
       return results;
-    });
+    }, brandName);
 
     return products.map(p => ({
       ...p,

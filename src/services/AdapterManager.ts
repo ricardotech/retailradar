@@ -28,7 +28,7 @@ export class AdapterManager {
       ));
   }
 
-  async getSupremeProducts(): Promise<Product[]> {
+  async getBrandProducts(brandName: string): Promise<Product[]> {
     const errors: Error[] = [];
 
     for (const adapter of this.wrappedAdapters) {
@@ -43,7 +43,7 @@ export class AdapterManager {
         }
 
         const products = await this.executeWithRetry(
-          () => adapter.getSupremeProducts(),
+          () => adapter.getBrandProducts(brandName),
           3,
           2000
         );

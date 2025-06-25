@@ -35,27 +35,27 @@ export class RapidApiAdapter implements IStockXAdapter {
     });
   }
 
-  async getSupremeProducts(): Promise<Product[]> {
+  async getBrandProducts(brandName: string): Promise<Product[]> {
     try {
-      logger.info('Fetching Supreme products from RapidAPI');
+      logger.info(`Fetching ${brandName} products from RapidAPI`);
 
       const response = await this.client.get('/search', {
         params: {
-          query: 'supreme',
+          query: brandName.toLowerCase(),
           category: 'shoes',
           limit: 100,
         },
       });
 
       const products = response.data?.data?.products || [];
-      const supremeProducts = this.transformProducts(products);
+      const brandProducts = this.transformProducts(products, brandName);
 
-      const belowRetailProducts = supremeProducts.filter(
+      const belowRetailProducts = brandProducts.filter(
         (product) => product.currentPrice < product.retailPrice
       );
 
       logger.info(
-        `Found ${belowRetailProducts.length} Supreme products below retail from RapidAPI`
+        `Found ${belowRetailProducts.length} ${brandName} products below retail from RapidAPI`
       );
 
       return belowRetailProducts;
@@ -75,9 +75,9 @@ export class RapidApiAdapter implements IStockXAdapter {
     }
   }
 
-  private transformProducts(apiProducts: RapidApiProduct[]): Product[] {
+  private transformProducts(apiProducts: RapidApiProduct[], brandName: string): Product[] {
     return apiProducts
-      .filter((item) => item.brand?.toLowerCase() === 'supreme')
+      .filter((item) => item.brand?.toLowerCase() === brandName.toLowerCase())
       .map((item) => {
         const currentPrice = item.market?.lowest_ask || item.market?.last_sale || 0;
         const retailPrice = item.retail_price || 0;

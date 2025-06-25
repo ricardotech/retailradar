@@ -5,7 +5,7 @@ import { AdapterManager } from './AdapterManager';
 import { logger } from '@/config/logger';
 import { redisClient, CACHE_TTL } from '@/config/redis';
 
-export class SupremeService {
+export class BrandService {
   private adapterManager: AdapterManager;
 
   constructor(
@@ -15,25 +15,26 @@ export class SupremeService {
     this.adapterManager = adapterManager;
   }
 
-  async getSupremeBelowRetail(
+  async getBrandBelowRetail(
+    brandName: string,
     query: BrandProductsQuery
   ): Promise<PaginatedResponse<Product>> {
-    const cacheKey = this.generateCacheKey(query);
+    const cacheKey = this.generateCacheKey(brandName, query);
 
     try {
       const cachedResult = await redisClient.get(cacheKey);
       if (cachedResult) {
-        logger.info('Returning cached Supreme products');
+        logger.info(`Returning cached ${brandName} products`);
         return JSON.parse(cachedResult) as PaginatedResponse<Product>;
       }
     } catch (error) {
       logger.warn('Cache read failed:', error);
     }
 
-    await this.refreshProductData();
+    await this.refreshProductData(brandName);
 
-    const products = await this.productRepository.findBelowRetailProducts('Supreme', query);
-    const total = await this.productRepository.countBelowRetailProducts('Supreme', query);
+    const products = await this.productRepository.findBelowRetailProducts(brandName, query);
+    const total = await this.productRepository.countBelowRetailProducts(brandName, query);
     
     const lastProduct = products[products.length - 1];
     const paginatedResult: PaginatedResponse<Product> = {
@@ -58,8 +59,8 @@ export class SupremeService {
     return paginatedResult;
   }
 
-  private async refreshProductData(): Promise<void> {
-    const freshProducts = await this.fetchProductsFromAdapters();
+  private async refreshProductData(brandName: string): Promise<void> {
+    const freshProducts = await this.fetchProductsFromAdapters(brandName);
     const entities = freshProducts.map(this.dtoToEntity);
     
     for (const entity of entities) {
@@ -77,13 +78,13 @@ export class SupremeService {
     }
   }
 
-  private async fetchProductsFromAdapters(): Promise<Product[]> {
-    const products = await this.adapterManager.getBrandProducts('Supreme');
+  private async fetchProductsFromAdapters(brandName: string): Promise<Product[]> {
+    const products = await this.adapterManager.getBrandProducts(brandName);
     const belowRetailProducts = products.filter(product => 
       product.currentPrice < product.retailPrice
     );
     
-    return belowRetailProducts.map((product: Product) => ({
+    return belowRetailProducts.map(product => ({
       ...product,
       discountPercentage: this.calculateDiscountPercentage(product.retailPrice, product.currentPrice)
     }));
@@ -126,19 +127,19 @@ export class SupremeService {
     return entity;
   }
 
-  async getAdapterStats() {
+  async getAdapterStats(brandName: string) {
     return await this.adapterManager.getAdapterStats();
   }
 
-  async getHealthStatus() {
+  async getHealthStatus(brandName: string) {
     return await this.adapterManager.getHealthStatus();
   }
 
-  resetCircuitBreakers(): void {
+  resetCircuitBreakers(brandName: string): void {
     this.adapterManager.resetAllCircuitBreakers();
   }
 
-  private generateCacheKey(query: BrandProductsQuery): string {
+  private generateCacheKey(brandName: string, query: BrandProductsQuery): string {
     const params = new URLSearchParams();
     
     if (query.minDiscount !== undefined) {
@@ -155,6 +156,6 @@ export class SupremeService {
     }
     params.append('limit', (query.limit || 20).toString());
 
-    return `supreme-below-retail:${params.toString()}`;
+    return `${brandName.toLowerCase()}-below-retail:${params.toString()}`;
   }
 }
