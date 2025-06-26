@@ -24,6 +24,23 @@ export class PuppeteerAdapter implements IStockXAdapter {
     });
   }
 
+  private getBrandUrl(brandName: string): string {
+    const brand = brandName.toLowerCase();
+    
+    switch (brand) {
+      case 'supreme':
+        return `https://stockx.com/brands/${brand}`;
+      case 'adidas':
+        return 'https://stockx.com/search?s=adidas';
+      case 'nike':
+        return 'https://stockx.com/search?s=nike';
+      case 'jordan':
+        return 'https://stockx.com/search?s=jordan';
+      default:
+        return `https://stockx.com/search?s=${encodeURIComponent(brand)}`;
+    }
+  }
+
   async getBrandProducts(brandName: string): Promise<Product[]> {
     let page: Page | null = null;
     
@@ -34,7 +51,7 @@ export class PuppeteerAdapter implements IStockXAdapter {
       await this.initializeBrowser();
       page = await this.createPage();
       
-      const baseUrl = `https://stockx.com/brands/${brandName.toLowerCase()}?sort=recent_asks`;
+      const baseUrl = this.getBrandUrl(brandName);
       console.log(`🚀 [PUPPETEER] Navigating to: ${baseUrl}`);
       logger.info(`Navigating to StockX ${brandName} page`);
       
@@ -138,53 +155,36 @@ export class PuppeteerAdapter implements IStockXAdapter {
 
   private async handleCaptchaIfPresent(page: Page): Promise<void> {
     try {
-      // Captcha service is currently deactivated but code kept for future use
+      // Check for "Just a moment..." page
+      const title = await page.title();
+      if (title.includes('Just a moment') || title.includes('Checking your browser')) {
+        logger.info('Detected "Just a moment" page, waiting for it to resolve...');
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        
+        // Wait for the page to redirect or update
+        try {
+          await page.waitForFunction(() => {
+            return !document.title.includes('Just a moment') && !document.title.includes('Checking your browser');
+          }, { timeout: 30000 });
+        } catch (error) {
+          logger.warn('Timeout waiting for "Just a moment" page to resolve');
+        }
+      }
+
       // Check for Turnstile challenge
       const turnstileFrame = await page.$('iframe[src*="turnstile"]');
       if (turnstileFrame) {
         logger.info('Detected Turnstile captcha challenge - currently not solving');
-        // Deactivated: if (this.captchaService.isConfigured()) {
-        //   const siteKey = await page.evaluate(() => {
-        //     const iframe = document.querySelector('iframe[src*="turnstile"]') as HTMLIFrameElement;
-        //     return iframe?.src.match(/sitekey=([^&]+)/)?.[1] || '';
-        //   });
-        //   
-        //   if (siteKey) {
-        //     const token = await this.captchaService.solveTurnstile(siteKey, this.baseUrl);
-        //     
-        //     await page.evaluate((token) => {
-        //       const callback = (window as any).turnstileCallback;
-        //       if (callback) callback(token);
-        //     }, token);
-        //     
-        //     await page.waitForTimeout(2000);
-        //   }
-        // } else {
         logger.warn('Captcha detected but service deactivated, continuing...');
         await new Promise(resolve => setTimeout(resolve, 5000));
-        // }
       }
 
       // Check for reCAPTCHA
       const recaptchaFrame = await page.$('iframe[src*="recaptcha"]');
       if (recaptchaFrame) {
         logger.info('Detected reCAPTCHA challenge - currently not solving');
-        // Deactivated: if (this.captchaService.isConfigured()) {
-        //   const siteKey = await page.$eval('.g-recaptcha', el => el.getAttribute('data-sitekey') || '');
-        //   
-        //   if (siteKey) {
-        //     const token = await this.captchaService.solveRecaptcha(siteKey, this.baseUrl);
-        //     
-        //     await page.evaluate((token) => {
-        //       (window as any).grecaptcha?.execute?.(token);
-        //     }, token);
-        //     
-        //     await page.waitForTimeout(3000);
-        //   }
-        // } else {
         logger.warn('reCAPTCHA detected but service deactivated, continuing...');
         await new Promise(resolve => setTimeout(resolve, 5000));
-        // }
       }
       
     } catch (error: unknown) {
@@ -195,7 +195,7 @@ export class PuppeteerAdapter implements IStockXAdapter {
 
   private async waitForPageLoad(page: Page): Promise<void> {
     try {
-      // Wait for the product results container
+      // Try primary StockX selectors first
       await page.waitForSelector('[data-testid="Results"]', { 
         timeout: 30000 
       });
@@ -210,13 +210,46 @@ export class PuppeteerAdapter implements IStockXAdapter {
       
       // Additional wait for dynamic content
       await new Promise(resolve => setTimeout(resolve, 3000));
+      logger.info('Successfully loaded page with primary selectors');
       
     } catch (error: unknown) {
-      logger.warn('Standard selectors not found, trying alternative selectors');
+      logger.warn('Primary selectors not found, trying alternative selectors');
       
-      await page.waitForSelector('#product-results, .browse-grid, .search-results', { 
-        timeout: 15000 
-      });
+      try {
+        // Try alternative product grid selectors
+        await page.waitForSelector('#product-results, .browse-grid, .search-results, .grid-container, [class*="product"], [class*="grid"]', { 
+          timeout: 15000 
+        });
+        
+        // Wait for products to appear with fallback selectors
+        await page.waitForFunction(
+          (): boolean => {
+            const productSelectors = [
+              '[data-testid="ProductTile"]',
+              '.product-tile',
+              '.product-card',
+              '[class*="product"]',
+              'a[href*="/sneakers/"]',
+              'a[href*="/streetwear/"]'
+            ];
+            
+            for (const selector of productSelectors) {
+              if ((window as any).document.querySelectorAll(selector).length > 0) {
+                return true;
+              }
+            }
+            return false;
+          },
+          { timeout: 10000 }
+        );
+        
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        logger.info('Successfully loaded page with alternative selectors');
+        
+      } catch (fallbackError: unknown) {
+        logger.warn('Alternative selectors also failed, continuing with current page state');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
     }
   }
 
@@ -230,7 +263,36 @@ export class PuppeteerAdapter implements IStockXAdapter {
   private async scrapeProducts(page: Page, brandName: string): Promise<Product[]> {
     logger.info('Scraping initial product list...');
     const initialProducts = await page.evaluate((brandName: string) => {
-      const productElements = document.querySelectorAll('[data-testid="ProductTile"]');
+      console.log(`🔍 Looking for products for brand: ${brandName}`);
+      
+      // Try multiple selectors to find products
+      const productSelectors = [
+        '[data-testid="ProductTile"]',
+        '.product-tile',
+        '.product-card',
+        '[class*="product"]',
+        'a[href*="/sneakers/"]',
+        'a[href*="/streetwear/"]'
+      ];
+      
+      let productElements: NodeList = document.querySelectorAll('[]'); // Empty initially
+      
+      for (const selector of productSelectors) {
+        productElements = document.querySelectorAll(selector);
+        console.log(`🔍 Found ${productElements.length} elements with selector: ${selector}`);
+        if (productElements.length > 0) break;
+      }
+      
+      if (productElements.length === 0) {
+        console.log('🔍 No products found with any selector, trying more generic approach');
+        // Look for any links that might be products
+        const allLinks = Array.from(document.querySelectorAll('a[href*="stockx.com"]')).filter((link: any) => {
+          const href = link.getAttribute('href') || '';
+          return href.includes('/sneakers/') || href.includes('/streetwear/') || href.includes('/trading-cards/');
+        });
+        productElements = allLinks as unknown as NodeList;
+      }
+      
       const results: Array<{
         id: string;
         name: string;
@@ -240,27 +302,121 @@ export class PuppeteerAdapter implements IStockXAdapter {
         stockxUrl: string;
         imageUrl: string;
       }> = [];
-      productElements.forEach((element: Element, index: number) => {
+      
+      Array.from(productElements).forEach((element: any, index: number) => {
         try {
-          const nameElement = element.querySelector('[data-testid="product-tile-title"]');
-          const name = nameElement?.textContent?.trim() ?? '';
-          if (!name.toLowerCase().includes(brandName.toLowerCase())) return;
+          // Try different methods to get product name
+          let name = '';
+          const nameSelectors = [
+            '[data-testid="product-tile-title"]',
+            '.product-title',
+            '.product-name',
+            'h3',
+            'h4',
+            '.title'
+          ];
+          
+          for (const selector of nameSelectors) {
+            const nameElement = element.querySelector(selector);
+            if (nameElement?.textContent?.trim()) {
+              name = nameElement.textContent.trim();
+              break;
+            }
+          }
+          
+          // If still no name, try getting from link text or nearby text
+          if (!name) {
+            name = element.textContent?.trim() || '';
+            // Get the first reasonable-length text content
+            const textParts = name.split('\n').filter(part => part.trim().length > 5 && part.trim().length < 100);
+            name = textParts[0] || name;
+          }
+          
+          console.log(`🔍 Found product candidate: "${name}"`);
+          
+          // Check if name contains brand (more flexible matching)
+          const nameLower = name.toLowerCase();
+          const brandLower = brandName.toLowerCase();
+          const brandMatches = nameLower.includes(brandLower) || 
+                              (brandLower === 'adidas' && (nameLower.includes('adidas') || nameLower.includes('yeezy'))) ||
+                              (brandLower === 'nike' && (nameLower.includes('nike') || nameLower.includes('jordan'))) ||
+                              (brandLower === 'supreme' && nameLower.includes('supreme'));
+          
+          if (!brandMatches || !name || name.length < 3) {
+            console.log(`🔍 Skipping product: brand mismatch or invalid name`);
+            return;
+          }
 
-          const priceElement = element.querySelector('[data-testid="product-tile-lowest-ask-amount"]');
-          const priceText = priceElement?.textContent?.trim() ?? '';
-          const currentPrice = priceText ? parseInt(priceText.replace(/[^\d]/g, '')) : 0;
-          if (currentPrice <= 0) return;
+          // Try different methods to get price
+          let currentPrice = 0;
+          const priceSelectors = [
+            '[data-testid="product-tile-lowest-ask-amount"]',
+            '.price',
+            '.current-price',
+            '.ask-price',
+            '[class*="price"]'
+          ];
+          
+          for (const selector of priceSelectors) {
+            const priceElement = element.querySelector(selector);
+            if (priceElement?.textContent) {
+              const priceText = priceElement.textContent.trim();
+              const priceMatch = priceText.match(/\$?(\d+(?:,\d{3})*(?:\.\d{2})?)/);
+              if (priceMatch) {
+                currentPrice = parseInt(priceMatch[1].replace(/,/g, ''));
+                break;
+              }
+            }
+          }
+          
+          if (currentPrice <= 0) {
+            console.log(`🔍 Skipping product: no valid price found`);
+            return;
+          }
 
-          const linkElement = element.querySelector('a[data-testid="productTile-ProductSwitcherLink"]');
-          const href = linkElement?.getAttribute('href');
-          const stockxUrl = href?.startsWith('http') ? href : `https://stockx.com${href}`;
+          // Get product URL
+          let stockxUrl = '';
+          const linkSelectors = [
+            'a[data-testid="productTile-ProductSwitcherLink"]',
+            'a[href*="/sneakers/"]',
+            'a[href*="/streetwear/"]',
+            'a'
+          ];
+          
+          for (const selector of linkSelectors) {
+            const linkElement = element.querySelector(selector);
+            if (linkElement) {
+              const href = linkElement.getAttribute('href');
+              if (href) {
+                stockxUrl = href.startsWith('http') ? href : `https://stockx.com${href}`;
+                break;
+              }
+            }
+          }
+          
+          // If current element is a link, use it
+          if (!stockxUrl && element.tagName === 'A') {
+            const href = element.getAttribute('href');
+            if (href) {
+              stockxUrl = href.startsWith('http') ? href : `https://stockx.com${href}`;
+            }
+          }
+          
+          if (!stockxUrl) {
+            console.log(`🔍 Skipping product: no valid URL found`);
+            return;
+          }
 
+          // Get image URL
           const imageElement = element.querySelector('img');
           const imageUrl = imageElement?.getAttribute('src') ?? '';
           
+          // Extract colorway from name
           const nameWords = name.split(' ');
-          const colorway = nameWords[nameWords.length - 1] ?? '';
+          const colorway = nameWords.length > 1 ? nameWords[nameWords.length - 1] : '';
 
+          console.log(`✅ Found valid product: ${name} - $${currentPrice}`);
+          
           results.push({
             id: `puppeteer-${index}-${Date.now()}`,
             name,
@@ -274,6 +430,8 @@ export class PuppeteerAdapter implements IStockXAdapter {
           console.warn('Error parsing product element:', error);
         }
       });
+      
+      console.log(`🔍 Total products found: ${results.length}`);
       return results;
     }, brandName);
 
