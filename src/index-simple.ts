@@ -20,10 +20,11 @@ app.get('/api/v1/radar/:brandName/below-retail', async (req, res) => {
   
   try {
     const brandName = req.params.brandName || 'supreme';
-    console.log(`Starting ${brandName} product scraping...`);
-    console.log('Navigating to StockX page...');
-    console.log('Waiting for page to load...');
-    console.log('Scraping products...');
+    console.log(`🔍 [DEBUG] Starting ${brandName} product scraping with REAL PuppeteerAdapter...`);
+    console.log(`🔍 [DEBUG] Using index-simple.ts from: ${__filename}`);
+    console.log(`🔍 [DEBUG] Node.js process: ${process.argv.join(' ')}`);
+    console.log(`🔍 [DEBUG] Working directory: ${process.cwd()}`);
+    console.log(`🔍 [DEBUG] Environment: ${process.env.NODE_ENV}`);
     
     const products = await adapter.getBrandProducts(brandName);
     

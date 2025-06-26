@@ -2,24 +2,33 @@ version: '3.8'
 
 services:
   app:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    command: ["node", "dist/index-simple.js"]
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=development
       - DATABASE_HOST=postgres
       - DATABASE_PORT=5432
       - DATABASE_NAME=retailradar
       - DATABASE_USER=postgres
       - DATABASE_PASSWORD=password
       - REDIS_URL=redis://redis:6379
-      - LOG_LEVEL=info
+      - LOG_LEVEL=debug
+      - DEBUG=puppeteer:*,puppeteer:browser,puppeteer:page
+      - XDG_CONFIG_HOME=/tmp/.chromium
+      - XDG_CACHE_HOME=/tmp/.chromium
+      - PUPPETEER_EXECUTABLE_PATH=/home/pptruser/.cache/puppeteer/chrome/linux-137.0.7151.119/chrome-linux64/chrome
     cap_add:
       - SYS_ADMIN
     depends_on:
       - postgres
       - redis
     restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
 
   postgres:
     image: postgres:15-alpine

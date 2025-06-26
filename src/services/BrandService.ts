@@ -68,26 +68,27 @@ export class BrandService {
 
   private async refreshProductData(brandName: string): Promise<void> {
     const freshProducts = await this.fetchProductsFromAdapters(brandName);
-    const entities = freshProducts.map((p: Product) => this.dtoToEntity(p));
-
-    logger.info({ 
-      entitiesToSave: entities.map(e => ({ 
-        name: e.name, 
-        retailPrice: e.retailPrice, 
-        currentPrice: e.currentPrice 
-      })) 
-    }, 'Entities to be saved to the database');
     
-    for (const entity of entities) {
+    logger.info(`Processing ${freshProducts.length} products from adapters.`);
+
+    for (const product of freshProducts) {
+      const entity = this.dtoToEntity(product);
       const existing = await this.productRepository.findByStockxUrl(entity.stockxUrl);
+
       if (existing) {
-        entity.id = existing.id;
+        logger.info({
+          productId: existing.id,
+          newPrice: entity.currentPrice
+        }, 'Updating existing product');
         await this.productRepository.update(existing.id, {
           currentPrice: entity.currentPrice,
           discountPercentage: entity.discountPercentage,
           updatedAt: new Date(),
         });
       } else {
+        logger.info({
+          productName: entity.name
+        }, 'Saving new product');
         await this.productRepository.save(entity);
       }
     }
@@ -157,11 +158,11 @@ export class BrandService {
     return entity;
   }
 
-  async getAdapterStats(brandName: string) {
+  async getAdapterStats() {
     return await this.adapterManager.getAdapterStats();
   }
 
-  async getHealthStatus(): Promise<{ name: string; healthy: boolean; circuitBreakerState: import("/root/Projects/retail/retailradar/src/utils/CircuitBreaker").CircuitBreakerState; error?: unknown; }[]> {
+  async getHealthStatus(): Promise<{ name: string; healthy: boolean; circuitBreakerState: import("/root/Projects/retail/retailradar/src/utils/CircuitBreaker").CircuitBreakerState | 'UNKNOWN'; error?: unknown; }[]> {
     return await this.adapterManager.getHealthStatus();
   }
 

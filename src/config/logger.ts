@@ -1,35 +1,52 @@
-import pino from 'pino';
+import pino, { Logger } from 'pino';
 import { Request, Response, NextFunction } from 'express';
 
-const isDevelopment = process.env.NODE_ENV === 'development';
+const isDevelopment = process.env['NODE_ENV'] === 'development';
 
-export const logger = pino({
-  level: process.env.LOG_LEVEL ?? 'info',
-  transport: isDevelopment
+export const logger: Logger = pino(
+  isDevelopment
     ? {
-        target: 'pino-pretty',
-        options: {
-          colorize: true,
-          translateTime: 'SYS:standard',
-          ignore: 'pid,hostname',
+        level: process.env['LOG_LEVEL'] ?? 'info',
+        transport: {
+          target: 'pino-pretty',
+          options: {
+            colorize: true,
+            translateTime: 'SYS:standard',
+            ignore: 'pid,hostname',
+          },
+        },
+        formatters: {
+          level: (label: string): { level: string } => ({ level: label }),
+        },
+        timestamp: pino.stdTimeFunctions.isoTime,
+        serializers: {
+          req: pino.stdSerializers.req,
+          res: pino.stdSerializers.res,
+          error: pino.stdSerializers.err,
         },
       }
-    : undefined,
-  formatters: {
-    level: (label: string): { level: string } => ({ level: label }),
-  },
-  timestamp: pino.stdTimeFunctions.isoTime,
-  serializers: {
-    req: pino.stdSerializers.req,
-    res: pino.stdSerializers.res,
-    error: pino.stdSerializers.err,
-  },
-});
+    : {
+        level: process.env['LOG_LEVEL'] ?? 'info',
+        formatters: {
+          level: (label: string): { level: string } => ({ level: label }),
+        },
+        timestamp: pino.stdTimeFunctions.isoTime,
+        serializers: {
+          req: pino.stdSerializers.req,
+          res: pino.stdSerializers.res,
+          error: pino.stdSerializers.err,
+        },
+      }
+);
+
+export interface RequestWithLogger extends Request {
+  log: Logger;
+}
 
 export const requestLogger = (req: Request, res: Response, next: NextFunction): void => {
   const startTime = Date.now();
   
-  req.log = logger.child({
+  (req as RequestWithLogger).log = logger.child({
     requestId: req.headers['x-request-id'] ?? Date.now().toString(),
   });
 
@@ -37,7 +54,7 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction): 
     const duration = Date.now() - startTime;
     const level = res.statusCode >= 400 ? 'error' : 'info';
     
-    (req.log as pino.Logger)[level]({
+    (req as RequestWithLogger).log[level]({
       req: {
         method: req.method,
         url: req.originalUrl,

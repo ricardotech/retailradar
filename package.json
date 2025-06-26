@@ -2,7 +2,7 @@
   "name": "retailradar",
   "version": "1.0.0",
   "description": "TypeScript microservice that extracts Supreme products priced below retail on StockX",
-  "main": "dist/index.js",
+  "main": "dist/index-simple.js",
   "scripts": {
     "dev": "tsx watch src/index-simple.ts",
     "dev:windows": "powershell -ExecutionPolicy Bypass -File scripts/dev-windows.ps1",

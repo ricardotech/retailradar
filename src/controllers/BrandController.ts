@@ -40,7 +40,7 @@ export class BrandController {
       if (!brandName) {
         throw new Error('Brand name is required');
       }
-      const stats = await this.brandService.getAdapterStats(brandName);
+      const stats = await this.brandService.getAdapterStats();
       
       const response: ApiResponse<any> = {
         success: true,
@@ -64,7 +64,7 @@ export class BrandController {
       if (!brandName) {
         throw new Error('Brand name is required');
       }
-      const health = await this.brandService.getHealthStatus(brandName);
+      const health = await this.brandService.getHealthStatus();
       
       const response: ApiResponse<unknown> = {
         success: true,
@@ -88,7 +88,7 @@ export class BrandController {
       if (!brandName) {
         throw new Error('Brand name is required');
       }
-      this.brandService.resetCircuitBreakers(brandName);
+      this.brandService.resetCircuitBreakers();
       
       const response: ApiResponse<unknown> = {
         success: true,

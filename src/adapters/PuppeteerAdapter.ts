@@ -28,20 +28,31 @@ export class PuppeteerAdapter implements IStockXAdapter {
     let page: Page | null = null;
     
     try {
+      console.log(`🚀 [PUPPETEER] getBrandProducts called for: ${brandName}`);
+      console.log(`🚀 [PUPPETEER] Initializing browser...`);
+      
       await this.initializeBrowser();
       page = await this.createPage();
       
-      const baseUrl = `https://stockx.com/brands/${brandName.toLowerCase()}?below-retail=true&sort=recent_asks`;
+      const baseUrl = `https://stockx.com/brands/${brandName.toLowerCase()}?sort=recent_asks`;
+      console.log(`🚀 [PUPPETEER] Navigating to: ${baseUrl}`);
       logger.info(`Navigating to StockX ${brandName} page`);
+      
       await page.goto(baseUrl, { 
         waitUntil: 'networkidle2',
         timeout: 60000 
       });
 
+      console.log(`🚀 [PUPPETEER] Page loaded, handling captcha...`);
       await this.handleCaptchaIfPresent(page);
+      
+      console.log(`🚀 [PUPPETEER] Waiting for page elements...`);
       await this.waitForPageLoad(page);
+      
+      console.log(`🚀 [PUPPETEER] Starting product scraping...`);
       const products = await this.scrapeProducts(page, brandName);
       
+      console.log(`🚀 [PUPPETEER] Scraping completed: ${products.length} products found`);
       logger.info(`Successfully scraped ${products.length} ${brandName} products below retail`);
       return products;
       
@@ -219,7 +230,7 @@ export class PuppeteerAdapter implements IStockXAdapter {
   private async scrapeProducts(page: Page, brandName: string): Promise<Product[]> {
     logger.info('Scraping initial product list...');
     const initialProducts = await page.evaluate((brandName: string) => {
-      const productElements = (document as any).querySelectorAll('[data-testid="ProductTile"]');
+      const productElements = document.querySelectorAll('[data-testid="ProductTile"]');
       const results: Array<{
         id: string;
         name: string;
@@ -229,7 +240,7 @@ export class PuppeteerAdapter implements IStockXAdapter {
         stockxUrl: string;
         imageUrl: string;
       }> = [];
-      productElements.forEach((element: any, index: number) => {
+      productElements.forEach((element: Element, index: number) => {
         try {
           const nameElement = element.querySelector('[data-testid="product-tile-title"]');
           const name = nameElement?.textContent?.trim() ?? '';
@@ -267,15 +278,22 @@ export class PuppeteerAdapter implements IStockXAdapter {
     }, brandName);
 
     logger.info(`Found ${initialProducts.length} potential products. Now fetching individual retail prices...`);
+    console.log(`DEBUG: Found ${initialProducts.length} potential products. Now fetching individual retail prices...`);
+    console.log(`DEBUG: Initial products:`, JSON.stringify(initialProducts.slice(0, 2), null, 2));
 
     const detailedProducts: Product[] = [];
     const failedScrapes: string[] = [];
     
     for (let i = 0; i < initialProducts.length; i++) {
       const product = initialProducts[i];
+      if (!product) continue;
+
       logger.info(`[${i + 1}/${initialProducts.length}] Scraping retail price for: ${product.name}`);
       logger.info(`Product URL: ${product.stockxUrl}`);
-      logger.info(`Current price: $${product.currentPrice}`);
+      logger.info(`Current price: ${product.currentPrice}`);
+      console.log(`DEBUG: [${i + 1}/${initialProducts.length}] Scraping retail price for: ${product.name}`);
+      console.log(`DEBUG: Product URL: ${product.stockxUrl}`);
+      console.log(`DEBUG: Current price: ${product.currentPrice}`);
       
       const retailPrice = await this.scrapeRetailPrice(page, product.stockxUrl);
 
@@ -284,16 +302,16 @@ export class PuppeteerAdapter implements IStockXAdapter {
           const discountPercentage = this.calculateDiscountPercentage(retailPrice, product.currentPrice);
           const discount = ((retailPrice - product.currentPrice) / retailPrice * 100).toFixed(1);
           
-          logger.info(`✅ BELOW RETAIL: ${product.name} - Retail: $${retailPrice}, Current: $${product.currentPrice}, Discount: ${discount}%`);
+          logger.info(`✅ BELOW RETAIL: ${product.name} - Retail: ${retailPrice}, Current: ${product.currentPrice}, Discount: ${discount}%`);
           
           detailedProducts.push({
             ...product,
             retailPrice,
             discountPercentage,
             lastUpdated: new Date(),
-          });
+          } as Product);
         } else {
-          logger.info(`❌ NOT below retail: ${product.name} - Retail: $${retailPrice}, Current: $${product.currentPrice}`);
+          logger.info(`❌ NOT below retail: ${product.name} - Retail: ${retailPrice}, Current: ${product.currentPrice}`);
         }
       } else {
         logger.warn(`⚠️  Failed to get retail price for: ${product.name}`);
@@ -324,16 +342,45 @@ export class PuppeteerAdapter implements IStockXAdapter {
 
       // Try multiple selectors to find retail price
       const retailPrice = await productPage.evaluate(() => {
-        console.log('Starting retail price search...');
+        console.log('🔍 Starting retail price search...');
         
-        // Method 1: Find elements with "Retail Price" text and get the next sibling
+        // Method 1: StockX-specific product traits structure
+        console.log('🔍 Trying StockX product traits structure...');
+        const productTraits = (document as any).querySelectorAll('[data-component="product-trait"]');
+        console.log(`🔍 Found ${productTraits.length} product traits`);
+        
+        for (const trait of productTraits) {
+          const labelElement = trait.querySelector('span');
+          const valueElement = trait.querySelector('p');
+          
+          if (labelElement && valueElement) {
+            const label = labelElement.textContent?.trim().toLowerCase();
+            const value = valueElement.textContent?.trim();
+            
+            console.log(`🔍 Product trait: "${label}" = "${value}"`);
+            
+            if (label === 'retail price' && value) {
+              const priceMatch = value.match(/\$?(\d+(?:,\d{3})*(?:\.\d{2})?)/);
+              if (priceMatch) {
+                const price = parseFloat(priceMatch[1].replace(/,/g, ''));
+                if (price > 0 && price < 10000) {
+                  console.log(`✅ Found retail price via StockX product traits: $${price}`);
+                  return price;
+                }
+              }
+            }
+          }
+        }
+        
+        // Method 2: Find elements with "Retail Price" text and get the next sibling
+        console.log('🔍 Trying generic retail price text search...');
         const retailPriceElements = Array.from((document as any).querySelectorAll('p, span, div, dt, dd'))
           .filter((el: any) => {
             const text = el.textContent?.trim().toLowerCase() || '';
             return text === 'retail price' || text === 'retail' || text.includes('retail price');
           });
 
-        console.log(`Found ${retailPriceElements.length} elements with retail price text`);
+        console.log(`🔍 Found ${retailPriceElements.length} elements with retail price text`);
 
         for (const element of retailPriceElements) {
           // Try next sibling
@@ -343,7 +390,7 @@ export class PuppeteerAdapter implements IStockXAdapter {
             if (priceMatch) {
               const price = parseFloat(priceMatch[1].replace(/,/g, ''));
               if (price > 0 && price < 10000) {
-                console.log(`Found retail price via next sibling: $${price}`);
+                console.log(`✅ Found retail price via next sibling: $${price}`);
                 return price;
               }
             }
@@ -356,14 +403,15 @@ export class PuppeteerAdapter implements IStockXAdapter {
             if (priceMatch) {
               const price = parseFloat(priceMatch[1].replace(/,/g, ''));
               if (price > 0 && price < 10000) {
-                console.log(`Found retail price via parent next sibling: $${price}`);
+                console.log(`✅ Found retail price via parent next sibling: $${price}`);
                 return price;
               }
             }
           }
         }
 
-        // Method 2: Look for price elements in retail context
+        // Method 3: Look for price elements in retail context
+        console.log('🔍 Trying contextual retail price search...');
         const allElements = Array.from((document as any).querySelectorAll('p, span, div, dt, dd'));
         for (const element of allElements) {
           const text = (element as any).textContent?.trim() || '';
@@ -374,13 +422,14 @@ export class PuppeteerAdapter implements IStockXAdapter {
           if (priceMatch && (parentText.includes('retail') || parentText.includes('msrp'))) {
             const price = parseFloat(priceMatch[1].replace(/,/g, ''));
             if (price > 0 && price < 10000) {
-              console.log(`Found retail price via context: $${price} from "${text}"`);
+              console.log(`✅ Found retail price via context: $${price} from "${text}"`);
               return price;
             }
           }
         }
 
-        // Method 3: StockX specific data attributes and classes
+        // Method 4: StockX specific data attributes and classes
+        console.log('🔍 Trying StockX-specific selectors...');
         const stockxSelectors = [
           '[data-testid*="retail"]',
           '[data-testid*="msrp"]',
@@ -392,21 +441,22 @@ export class PuppeteerAdapter implements IStockXAdapter {
 
         for (const selector of stockxSelectors) {
           const elements = (document as any).querySelectorAll(selector);
+          console.log(`🔍 Found ${elements.length} elements for selector: ${selector}`);
           for (const element of elements) {
             const text = (element as any).textContent?.trim() || '';
             const priceMatch = text.match(/\$?(\d+(?:,\d{3})*(?:\.\d{2})?)/);
             if (priceMatch) {
               const price = parseFloat(priceMatch[1].replace(/,/g, ''));
               if (price > 0 && price < 10000) {
-                console.log(`Found retail price via StockX selector: $${price}`);
+                console.log(`✅ Found retail price via StockX selector: $${price}`);
                 return price;
               }
             }
           }
         }
 
-        // Method 4: Fallback - text search in entire document
-        console.log('Trying fallback text search...');
+        // Method 5: Fallback - text search in entire document
+        console.log('🔍 Trying fallback text search...');
         const bodyText = (document as any).body.innerText;
         const patterns = [
           /Retail Price[:\s]*\$?(\d+(?:,\d{3})*(?:\.\d{2})?)/i,
@@ -420,13 +470,13 @@ export class PuppeteerAdapter implements IStockXAdapter {
           if (match) {
             const price = parseFloat(match[1].replace(/,/g, ''));
             if (price > 0 && price < 10000) {
-              console.log(`Found retail price via text search: $${price}`);
+              console.log(`✅ Found retail price via text search: $${price}`);
               return price;
             }
           }
         }
 
-        console.log('No retail price found');
+        console.log('❌ No retail price found on this page');
         return 0;
       });
 
@@ -436,9 +486,10 @@ export class PuppeteerAdapter implements IStockXAdapter {
       } else {
         logger.warn(`Could not find retail price for ${productUrl}`);
         
-        // Debug: log page content for analysis
-        const pageText = await productPage.evaluate(() => (document as any).body.innerText.substring(0, 1000));
-        logger.info(`Page content sample: ${pageText}`);
+        // Debug: log page title and URL for analysis
+        const pageTitle = await productPage.title();
+        const currentUrl = productPage.url();
+        logger.warn(`Failed to find retail price. Page title: ${pageTitle}, URL: ${currentUrl}`);
       }
 
     } catch (error) {

@@ -15,7 +15,7 @@ export const createApp = (): express.Application => {
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
 
-  app.use((req, res, next) => {
+  app.use((req, _res, next) => {
     logger.info({
       method: req.method,
       url: req.url,
@@ -24,7 +24,7 @@ export const createApp = (): express.Application => {
     next();
   });
 
-  app.get('/healthz', (req, res) => {
+  app.get('/healthz', (_req, res) => {
     res.status(200).json({
       status: 'ok',
       timestamp: new Date().toISOString(),

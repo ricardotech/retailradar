@@ -75,7 +75,7 @@ export class AdapterManager {
     return this.wrappedAdapters.map(adapter => adapter.getCircuitBreakerStats());
   }
 
-  async getHealthStatus(): Promise<{ name: string; healthy: boolean; circuitBreakerState: import("/root/Projects/retail/retailradar/src/utils/CircuitBreaker").CircuitBreakerState; error?: unknown; }[]> {
+  async getHealthStatus(): Promise<{ name: string; healthy: boolean; circuitBreakerState: import("/root/Projects/retail/retailradar/src/utils/CircuitBreaker").CircuitBreakerState | 'UNKNOWN'; error?: unknown; }[]> {
     const results = await Promise.allSettled(
       this.wrappedAdapters.map(async adapter => ({
         name: adapter.getCircuitBreakerStats().name,

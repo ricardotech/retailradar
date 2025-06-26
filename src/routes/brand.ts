@@ -22,25 +22,25 @@ const puppeteerAdapter = new PuppeteerAdapter();
 
 const adapterManager = new AdapterManager([
   {
+    adapter: puppeteerAdapter,
+    name: 'Puppeteer Scraper',
+    priority: 1,
+    retryCount: 2,
+    retryDelay: 5000
+  },
+  {
     adapter: officialAdapter,
     name: 'Official StockX API',
-    priority: 1,
+    priority: 2,
     retryCount: 3,
     retryDelay: 2000
   },
   {
     adapter: rapidApiAdapter,
     name: 'RapidAPI StockX',
-    priority: 2,
+    priority: 3,
     retryCount: 3,
     retryDelay: 2000
-  },
-  {
-    adapter: puppeteerAdapter,
-    name: 'Puppeteer Scraper',
-    priority: 3,
-    retryCount: 2,
-    retryDelay: 5000
   }
 ]);
 

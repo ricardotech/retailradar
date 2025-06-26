@@ -39,8 +39,8 @@ export const validateBody = (schema: z.ZodSchema) => {
 export const validateParams = (schema: z.ZodSchema) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     try {
-      const validatedParams: unknown = schema.parse(req.params);
-      req.params = validatedParams as Record<string, unknown>;
+      const validatedParams = schema.parse(req.params);
+      req.params = validatedParams as unknown as import('express-serve-static-core').ParamsDictionary;
       next();
     } catch (error) {
       if (error instanceof z.ZodError) {

@@ -1,47 +1,69 @@
-# Stage 1: Build the application
-# Use a specific version of the official Puppeteer image that matches your package.json
+# Build stage
 FROM ghcr.io/puppeteer/puppeteer:21.5.2 AS builder
 
-# The base image has a non-root user 'pptruser', but we need root for npm install.
 USER root
 WORKDIR /app
 
-# Install all dependencies and build the app
+# Install dependencies and build
 COPY package*.json ./
-RUN npm install --omit=optional
+RUN npm config set registry https://registry.npmjs.org/ && npm install --omit=optional
 COPY . .
 RUN npm run build:simple
 
-# Stage 2: Create the production image
+# Production stage
 FROM ghcr.io/puppeteer/puppeteer:21.5.2
 
 USER root
 WORKDIR /app
 
-# Set environment variables
+# Environment variables for Puppeteer in Docker
 ENV NODE_ENV=production
-# Set cache directories to a temporary location to avoid permission issues
 ENV XDG_CONFIG_HOME=/tmp/.chromium
 ENV XDG_CACHE_HOME=/tmp/.chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false
 
-# Copy package files and install only production dependencies
+# Install system dependencies for Puppeteer and dbus
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    dbus \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libcups2 \
+    libdrm2 \
+    libgbm1 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libx11-xcb1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    xdg-utils \
+    libu2f-udev \
+    libxshmfence1 \
+    libglu1-mesa \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy production files
 COPY --from=builder /app/package*.json ./
 RUN npm install --production --omit=optional
-
-# Copy the built application from the builder stage
 COPY --from=builder /app/dist ./dist
 
-# Give the non-root user ownership of the app files
+# Install sudo and configure pptruser
+RUN apt-get update && apt-get install -y sudo && rm -rf /var/lib/apt/lists/* \
+    && echo "pptruser ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+# Create chromium cache directories with proper permissions
+RUN mkdir -p /tmp/.chromium && chown -R pptruser:pptruser /tmp/.chromium
+
+# Give ownership to pptruser
 RUN chown -R pptruser:pptruser /app
 
-# Switch to the non-root user for security
+# Switch to pptruser for security (Puppeteer runs best as non-root)
 USER pptruser
 
 EXPOSE 3000
 
-# Healthcheck to ensure the application is running correctly
-HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/healthz', (res) => process.exit(res.statusCode === 200 ? 0 : 1))"
-
-# The command to run the application
-CMD ["node", "dist/index-simple.js"]
+# Start dbus service and run application with verbose logging
+CMD ["sh", "-c", "sudo service dbus start && node dist/index-simple.js"]

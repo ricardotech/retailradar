@@ -77,7 +77,7 @@ export const errorHandler = (
     errorCode = 'DATABASE_ERROR';
   }
 
-  const isProduction = process.env.NODE_ENV === 'production';
+  const isProduction = process.env['NODE_ENV'] === 'production';
   
   logger.error({
     error: {
